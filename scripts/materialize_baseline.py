@@ -7,6 +7,8 @@ import shutil
 import zipfile
 from pathlib import Path
 
+from runtime_overlays import apply_runtime_overlays, overlay_digest
+
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE_DIR = ROOT / "baseline"
 PARTS_DIR = BASELINE_DIR / "parts"
@@ -42,8 +44,11 @@ def materialize(target: Path, force: bool = False) -> Path:
     expected = manifest["sha256"]
     expected_size = int(manifest["size"])
 
-    marker = target / ".baseline.sha256"
-    if not force and marker.exists() and marker.read_text(encoding="ascii").strip() == expected:
+    runtime_key = hashlib.sha256(
+        f"{expected}:{overlay_digest()}".encode("ascii")
+    ).hexdigest()
+    marker = target / ".runtime.sha256"
+    if not force and marker.exists() and marker.read_text(encoding="ascii").strip() == runtime_key:
         return target
 
     payload = bundle_bytes(manifest)
@@ -65,7 +70,9 @@ def materialize(target: Path, force: bool = False) -> Path:
     target.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(archive, "r") as zf:
         zf.extractall(target)
-    marker.write_text(expected + "\n", encoding="ascii")
+    apply_runtime_overlays(target)
+    (target / ".baseline.sha256").write_text(expected + "\n", encoding="ascii")
+    marker.write_text(runtime_key + "\n", encoding="ascii")
     return target
 
 
