@@ -271,3 +271,21 @@ Decision:
 Reasoning:
 
 A silent fallback would hide an unsafe cutover, while changing write inputs based on the read flag could invert or corrupt the established migration sequence. Explicit fail-closed selection makes problems observable and the dual-process parity suite isolates backend differences without changing API contracts. Production-primary SQLite reads remain a later operational decision after live reconciliation and observation.
+
+## ADR-018 — Observe SQLite alongside authoritative legacy reads before canary cutover
+
+Status: accepted for Phase 3B.
+
+Decision:
+
+- allow `STATE_READ_SHADOW_COMPARE=1` only while `STATE_READ_BACKEND=legacy`;
+- return the legacy value regardless of a non-strict comparison mismatch/error;
+- compare complete exported domain values in memory for all schema-v3 read domains;
+- emit only domain, event, process-local counter and exception type, never payload values, identities or auth secrets;
+- report the first match per domain and then a configurable interval, while always reporting mismatch/error events;
+- use strict mode in CI and local verification so divergence fails visibly;
+- keep the later SQLite-read canary and primary-read promotion as separate operational steps.
+
+Reasoning:
+
+Seeded dual-process parity proves deterministic fixtures but not live production traffic or production-only fields. Legacy-serving shadow comparison exercises the same runtime loaders without changing response ownership, providing an observable low-risk gate before a bounded SQLite canary. Restricting it to legacy mode avoids an ambiguous configuration or silent fallback once SQLite is explicitly selected.

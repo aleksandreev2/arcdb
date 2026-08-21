@@ -201,6 +201,10 @@ def ensure_local_dual_write_defaults(child_env: dict[str, str]) -> None:
     child_env.setdefault("STATE_DUAL_WRITE", "1")
     child_env.setdefault("STATE_DUAL_WRITE_STRICT", "1")
     child_env.setdefault("STATE_DUAL_WRITE_VERIFY", "1")
+    child_env.setdefault("STATE_READ_BACKEND", "legacy")
+    child_env.setdefault("STATE_READ_SHADOW_COMPARE", "0")
+    child_env.setdefault("STATE_READ_SHADOW_STRICT", "1")
+    child_env.setdefault("STATE_READ_SHADOW_REPORT_EVERY", "1000")
 
 
 def _local_server_listening(env: dict[str, str]) -> bool:
