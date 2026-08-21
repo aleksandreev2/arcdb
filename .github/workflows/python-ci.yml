@@ -28,16 +28,22 @@ jobs:
           arcdb/storage/sqlite_db.py
           arcdb/storage/legacy_import.py
           arcdb/storage/safe_migration.py
+          arcdb/storage/runtime_state.py
+          arcdb/storage/state_parity.py
           scripts/dev_bootstrap.py
           scripts/dev_seed.py
           scripts/dev_seed_library.py
           scripts/migrate_state_to_sqlite.py
           scripts/verify_migration_backup.py
           scripts/export_sqlite_to_legacy.py
+          scripts/verify_state_parity.py
+          scripts/runtime_overlays.py
           scripts/materialize_baseline.py
           tests/make_seed_fixtures.py
           tests/test_sqlite_state.py
           tests/test_safe_migration.py
+          tests/test_runtime_state.py
+          tests/test_runtime_overlays.py
       - name: Verify required templates
         run: |
           test -f .runtime/source/templates/login.html
@@ -106,6 +112,8 @@ jobs:
           assert Path('data/structured_output/900002').is_dir()
           assert len(list(Path('data/batched_epubs').glob('*.epub'))) == 5
           PY
+      - name: Verify seeded state shadow parity
+        run: PYTHONPATH=. .venv/bin/python scripts/verify_state_parity.py
       - name: Start seeded ArchiveDB and verify library API
         shell: bash
         run: |
@@ -168,6 +176,19 @@ jobs:
           PYTHONPATH=. .venv/bin/python -m unittest -v
           tests/test_sqlite_state.py
           tests/test_safe_migration.py
+          tests/test_runtime_state.py
+          tests/test_runtime_overlays.py
+      - name: Checkpoint current local shadow before explicit migration test
+        run: |
+          PYTHONPATH=. .venv/bin/python - <<'PY'
+          import sqlite3
+          conn = sqlite3.connect('data/arcdb.sqlite3')
+          try:
+              result = conn.execute('PRAGMA wal_checkpoint(TRUNCATE)').fetchone()
+              assert result[0] == 0, result
+          finally:
+              conn.close()
+          PY
       - name: First safe migration to SQLite WAL
         run: PYTHONPATH=. .venv/bin/python scripts/migrate_state_to_sqlite.py --verify --require-core
       - name: Repeat migration and preserve previous SQLite
