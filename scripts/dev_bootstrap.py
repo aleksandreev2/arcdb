@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import hashlib
 import os
 import secrets
@@ -186,6 +187,14 @@ def run_server(py: Path, child_env: dict[str, str], entrypoint: Path) -> int:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description="Prepare or run the ArchiveDB local development environment.")
+    parser.add_argument(
+        "--setup-only",
+        action="store_true",
+        help="Create .env/.venv, install dependencies and seed the local login without starting Flask.",
+    )
+    args = parser.parse_args()
+
     os.chdir(ROOT)
     env_values = ensure_env()
     entrypoint = ensure_source()
@@ -196,6 +205,10 @@ def main() -> int:
     child_env.update(env_values)
     ensure_local_directories(child_env)
     seed_dev_account(py, child_env)
+
+    if args.setup_only:
+        print("[setup] Local development environment is ready.")
+        return 0
     return run_server(py, child_env, entrypoint)
 
 
