@@ -1,0 +1,84 @@
+{
+  "schema_version": 1,
+  "users": [
+    {"email": "reader1@arcdb.local"},
+    {"email": "reader2@arcdb.local"}
+  ],
+  "library": [
+    {
+      "id": 422601,
+      "title": "Я стал куратором охотников S-ранга",
+      "raw_title": "S급 헌터들의 가이드가 되었다",
+      "author": "Dev Fixture",
+      "tags": ["Hunter", "Guide", "Dev Fixture"],
+      "description": "RAW + перевод: основной fixture для проверки карточки, читалки и скачивания.",
+      "translated_selector": {
+        "contains_all": ["Я_стал_куратором_охотников_S-ранга", "1-123", "FIXED"]
+      },
+      "translation_required": true
+    },
+    {
+      "id": 900001,
+      "title": "Регрессор Академии яндере",
+      "raw_title": "Регрессор Академии яндере",
+      "author": "Dev Fixture",
+      "tags": ["Academy", "Yandere", "Dev Fixture"],
+      "description": "Большой переводной EPUB для проверки длинной библиотеки и читалки.",
+      "translated_selector": {
+        "contains_all": ["Регрессор_Академии_яндере", "1-441"]
+      },
+      "translation_required": true
+    },
+    {
+      "id": 900002,
+      "title": "Мои сексуальные университетские подружки",
+      "raw_title": "Мои сексуальные университетские подружки",
+      "author": "Dev Fixture",
+      "tags": ["University", "Romance", "Dev Fixture"],
+      "description": "Переводной EPUB на 278 глав для проверки прогресса, фильтров и коллекций.",
+      "translated_selector": {
+        "contains_all": ["Мои_сексуальные_университесткие_подружки", "1-278"]
+      },
+      "translation_required": true
+    },
+    {
+      "id": 11560,
+      "title": "너의 페티시가 보여",
+      "raw_title": "너의 페티시가 보여",
+      "author": "Unknown",
+      "tags": ["Raw Only", "Dev Fixture"],
+      "description": "RAW-only fixture."
+    },
+    {
+      "id": 2852,
+      "title": "이 회귀자는 무료로 해줍니다!",
+      "raw_title": "이 회귀자는 무료로 해줍니다!",
+      "author": "Unknown",
+      "tags": ["Raw Only", "Regression", "Dev Fixture"],
+      "description": "RAW-only fixture."
+    },
+    {
+      "id": 43026,
+      "title": "욕망 실현 어플",
+      "raw_title": "욕망 실현 어플",
+      "author": "Unknown",
+      "tags": ["Raw Only", "Dev Fixture"],
+      "description": "RAW-only fixture."
+    },
+    {
+      "id": 77870,
+      "title": "능욕 아카데미의 순애충",
+      "raw_title": "능욕 아카데미의 순애충",
+      "author": "Unknown",
+      "tags": ["Raw Only", "Academy", "Images", "Dev Fixture"],
+      "description": "RAW-only image-heavy fixture."
+    }
+  ],
+  "primary_user_state": [
+    {"id": 422601, "status": "reading", "progress": 78, "collections": ["dev-reading"], "dl": 1, "last_read_hours_ago": 1},
+    {"id": 900001, "status": "reading", "progress": 312, "collections": ["dev-reading", "dev-test"], "last_read_hours_ago": 5},
+    {"id": 900002, "status": "reading", "progress": 137, "collections": ["dev-test"], "last_read_hours_ago": 24},
+    {"id": 11560, "status": "want_to_read", "progress": 0, "collections": ["dev-later"], "last_read_hours_ago": 48},
+    {"id": 2852, "status": "want_to_read", "progress": 0, "collections": ["dev-later"], "last_read_hours_ago": 72}
+  ]
+}
