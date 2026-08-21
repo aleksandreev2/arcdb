@@ -61,6 +61,9 @@ jobs:
           ARCHIVEDB_TEST_BASE_URL=http://127.0.0.1:5005 \
             PYTHONPATH=. .venv/bin/python tests/runtime_auth_workflow.py
           PYTHONPATH=. .venv/bin/python scripts/verify_state_parity.py
+          PYTHONPATH=. .venv/bin/python scripts/verify_read_cutover_readiness.py \
+            --meta-dir data/metadata \
+            --db data/arcdb.sqlite3
 
           for domain in users user_data collections user_uploads custom_meta allowed_emails; do
             if ! grep -q "\[STATE-READ-SHADOW\] event=match domain=${domain}" legacy-server.log; then

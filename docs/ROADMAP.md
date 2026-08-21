@@ -114,15 +114,18 @@ Implemented:
 - real mutation regressions while SQLite reads are enabled;
 - opt-in runtime shadow comparison that always returns legacy in non-strict observation mode;
 - process-local counters plus payload-free match/mismatch/error events for every schema-v3 read domain;
-- strict CI coverage for mismatch, missing SQLite, secret-safe logs and all-domain real Flask reads.
+- strict CI coverage for mismatch, missing SQLite, secret-safe logs and all-domain real Flask reads;
+- explicit-path, read-only readiness preflight that checks one consistent SQLite snapshot, full parity, schema/integrity/FK health and recursive legacy source-hash stability;
+- overwrite-refusing sanitized readiness reports that explicitly leave canary/primary authorization false.
 
 Pending:
 
-1. reconcile and verify production state;
-2. enable legacy-serving shadow comparison for bounded internal traffic and observe its events;
-3. enable SQLite reads only for a separate bounded internal canary;
-4. promote SQLite as primary read source only after stable observation;
-5. keep legacy files and rollback controls.
+1. obtain a live inventory/sanitized baseline and run the readiness preflight on explicit production paths;
+2. reconcile unknown files and live code/config differences;
+3. enable legacy-serving shadow comparison for bounded internal traffic and observe its events;
+4. enable SQLite reads only for a separate bounded internal canary;
+5. promote SQLite as primary read source only after stable observation;
+6. keep legacy files and rollback controls.
 
 Exit criteria:
 
@@ -236,15 +239,15 @@ After process-local state is removed/split:
 ## Current immediate order
 
 ```text
-1. production reconciliation + bounded legacy-serving shadow observation
-2. bounded SQLite read canary
-3. SQLite primary reads
-4. stop legacy writes domain-by-domain
-5. immediate upload/EPUB I/O fixes
-6. async packager
-7. Telethon split
-8. persistent library index
-9. frontend/static split
+1. live inventory + explicit-path readiness preflight + reconciliation
+2. bounded legacy-serving shadow observation
+3. bounded SQLite read canary
+4. SQLite primary reads
+5. stop legacy writes domain-by-domain
+6. immediate upload/EPUB I/O fixes
+7. async packager
+8. Telethon split
+9. persistent library index/frontend split
 10. R2/Cloudflare optimization
 ```
 

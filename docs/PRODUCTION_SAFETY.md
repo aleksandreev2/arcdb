@@ -185,6 +185,8 @@ Repository Phase 2D completes runtime dual-write for all mutable domains current
 
 Phase 3 adds `STATE_READ_BACKEND=legacy|sqlite`, but keeps `legacy` as the default. SQLite mode uses read-only connections and fails closed for missing/stale/invalid state. Phase 3B adds a safer observation step: with `STATE_READ_BACKEND=legacy` and `STATE_READ_SHADOW_COMPARE=1`, the application serves the legacy result, reads SQLite only for comparison and emits payload-free match/mismatch/error events. Non-strict mode is fail-safe for the authoritative read; strict mode is for CI/local validation. Do not set SQLite mode for production-wide traffic merely because seeded CI parity is green: first verify the live shadow, use bounded internal traffic, observe comparison events and prove rollback to `legacy`.
 
+The repository also provides `scripts/verify_read_cutover_readiness.py` as a read-only gate. It requires explicit live paths, requires the three core legacy documents, verifies schema/quick/integrity/foreign-key health plus complete schema-v3 parity in one SQLite snapshot, and proves the recursively discovered legacy sources did not change during the run. Its optional report omits paths, identities and payloads, refuses overwrite and deliberately sets canary/primary authorization to false. Passing this tool is evidence for operator review, not permission to cut over.
+
 Recommended order:
 
 1. SQLite shadow DB exists and verifies successfully.
@@ -193,15 +195,17 @@ Recommended order:
 4. Compare JSON and SQLite after each write in development/CI.
 5. Deploy dual-write with telemetry/logged mismatches.
 6. Observe a stable period.
-7. Keep `STATE_READ_BACKEND=legacy`, enable shadow comparison for bounded internal traffic and observe every domain.
-8. Investigate every mismatch/error; do not continue while any divergence is unexplained.
-9. Disable shadow comparison and prove that legacy-only serving is an immediate rollback.
-10. Enable `STATE_READ_BACKEND=sqlite` only for a separate bounded internal canary.
-11. Compare API responses/state and switch the canary back to `legacy` as a rollback drill.
-12. Make SQLite primary read source only after a stable observation period.
-13. Keep legacy writes temporarily if rollback confidence requires it.
-14. Stop legacy writes after another stable observation period.
-15. Preserve legacy files read-only for an agreed retention period.
+7. Run the explicit-path readiness preflight in a controlled quiet window and retain its private report.
+8. Reconcile every unknown-file count and any live source/config differences; a passing report alone is not authorization.
+9. Keep `STATE_READ_BACKEND=legacy`, enable shadow comparison for bounded internal traffic and observe every domain.
+10. Investigate every mismatch/error; do not continue while any divergence is unexplained.
+11. Disable shadow comparison and prove that legacy-only serving is an immediate rollback.
+12. Enable `STATE_READ_BACKEND=sqlite` only for a separate bounded internal canary.
+13. Compare API responses/state and switch the canary back to `legacy` as a rollback drill.
+14. Make SQLite primary read source only after a stable observation period.
+15. Keep legacy writes temporarily if rollback confidence requires it.
+16. Stop legacy writes after another stable observation period.
+17. Preserve legacy files read-only for an agreed retention period.
 
 ## Rollback
 

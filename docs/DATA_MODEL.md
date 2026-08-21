@@ -150,6 +150,8 @@ This is intentionally asymmetric. SQLite must not become authoritative until rea
 
 Phase 3 can export the live normalized/payload tables through a read-only SQLite connection when `STATE_READ_BACKEND=sqlite`. The default is `legacy`. Phase 3B can also compare those exports with real legacy-served reads when `STATE_READ_SHADOW_COMPARE=1`; equality is checked in memory and logs contain only domain/event/counter/error-type metadata, never state payloads. Write helpers bypass the read adapter and load legacy state directly so the required durable legacy-first sequence cannot be inverted by the read flag.
 
+The production readiness preflight loads each legacy document once, compares it with all schema-v3 exports from one read-only SQLite transaction and verifies the recursively discovered legacy file set/hashes did not change during the check. Its report contains aggregate source/file counts, database checks and row counts only; it contains no paths, keys, identities or payload values and does not authorize a canary.
+
 Relevant feature flags:
 
 ```text
