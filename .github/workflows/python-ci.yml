@@ -27,6 +27,7 @@ jobs:
           .runtime/source/gallery_app.py
           arcdb/storage/sqlite_db.py
           arcdb/storage/legacy_import.py
+          arcdb/storage/safe_migration.py
           scripts/dev_bootstrap.py
           scripts/dev_seed.py
           scripts/dev_seed_library.py
@@ -34,6 +35,7 @@ jobs:
           scripts/materialize_baseline.py
           tests/make_seed_fixtures.py
           tests/test_sqlite_state.py
+          tests/test_safe_migration.py
       - name: Verify required templates
         run: |
           test -f .runtime/source/templates/login.html
@@ -159,9 +161,21 @@ jobs:
           CI=1 python scripts/dev_bootstrap.py --setup-only
           .venv/bin/python tests/make_seed_fixtures.py dev-fixtures/inbox/Downloads.zip
           CI=1 python scripts/dev_bootstrap.py --setup-only --auto-seed-if-empty
-      - name: Run SQLite unit tests
-        run: PYTHONPATH=. .venv/bin/python -m unittest -v tests/test_sqlite_state.py
-      - name: Migrate seeded JSON state to SQLite WAL and verify roundtrip
-        run: PYTHONPATH=. .venv/bin/python scripts/migrate_state_to_sqlite.py --verify
-      - name: Verify SQLite database exists
-        run: test -f data/arcdb.sqlite3
+      - name: Run SQLite and migration safety unit tests
+        run: >-
+          PYTHONPATH=. .venv/bin/python -m unittest -v
+          tests/test_sqlite_state.py
+          tests/test_safe_migration.py
+      - name: First safe migration to SQLite WAL
+        run: PYTHONPATH=. .venv/bin/python scripts/migrate_state_to_sqlite.py --verify --require-core
+      - name: Repeat migration and preserve previous SQLite
+        run: PYTHONPATH=. .venv/bin/python scripts/migrate_state_to_sqlite.py --verify --require-core
+      - name: Verify migration artifacts and legacy sources still exist
+        run: |
+          test -f data/arcdb.sqlite3
+          test -f data/metadata/users.json
+          test -f data/metadata/user_data.json
+          test -f data/metadata/collections.json
+          test $(find data/migration-backups -name manifest.json | wc -l) -ge 2
+          test $(find data/migration-backups -path '*previous-sqlite/*.verified-copy' | wc -l) -ge 1
+          test $(find data/migration-backups -path '*previous-sqlite/*.pre-migration-original' | wc -l) -ge 1
