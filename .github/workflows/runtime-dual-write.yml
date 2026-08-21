@@ -1,0 +1,116 @@
+name: Runtime Dual Write CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  user-state-dual-write:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Prepare local environment
+        run: CI=1 python scripts/dev_bootstrap.py --setup-only
+
+      - name: Build and seed lightweight EPUB fixtures
+        run: |
+          .venv/bin/python tests/make_seed_fixtures.py dev-fixtures/inbox/Downloads.zip
+          CI=1 python scripts/dev_bootstrap.py --setup-only --auto-seed-if-empty
+
+      - name: Run state and overlay unit tests
+        run: >-
+          PYTHONPATH=. .venv/bin/python -m unittest -v
+          tests/test_sqlite_state.py
+          tests/test_runtime_state.py
+          tests/test_runtime_overlays.py
+
+      - name: Exercise real user-state API dual-write
+        shell: bash
+        run: |
+          set -euo pipefail
+          CI=1 python scripts/dev_bootstrap.py > server.log 2>&1 &
+          BOOT_PID=$!
+          cleanup() {
+            pkill -P "$BOOT_PID" 2>/dev/null || true
+            kill "$BOOT_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          for attempt in $(seq 1 120); do
+            if curl --fail --silent http://127.0.0.1:5004/login >/dev/null; then
+              break
+            fi
+            if ! kill -0 "$BOOT_PID" 2>/dev/null; then
+              cat server.log
+              exit 1
+            fi
+            sleep 1
+          done
+
+          curl --fail --silent --show-error \
+            -c cookies.txt \
+            -d 'email=dev@arcdb.local&password=arcdb-dev-123' \
+            -X POST http://127.0.0.1:5004/login >/dev/null
+
+          curl --fail --silent --show-error \
+            -b cookies.txt \
+            -H 'Content-Type: application/json' \
+            -d '{"id":"422601","progress":79}' \
+            -X POST http://127.0.0.1:5004/api/user_progress >/dev/null
+
+          curl --fail --silent --show-error \
+            -b cookies.txt \
+            -H 'Content-Type: application/json' \
+            -d '{"id":"422601","status":"finished"}' \
+            -X POST http://127.0.0.1:5004/api/user_status >/dev/null
+
+          curl --fail --silent --show-error \
+            -b cookies.txt \
+            -H 'Content-Type: application/json' \
+            -d '{"id":"422601","hide":true}' \
+            -X POST http://127.0.0.1:5004/api/user_hide >/dev/null
+
+          curl --fail --silent --show-error \
+            -b cookies.txt \
+            -H 'Content-Type: application/json' \
+            -d '{"id":"422601","hide":false}' \
+            -X POST http://127.0.0.1:5004/api/user_hide >/dev/null
+
+          PYTHONPATH=. .venv/bin/python scripts/verify_state_parity.py
+
+          PYTHONPATH=. .venv/bin/python - <<'PY'
+          import json
+          import sqlite3
+
+          legacy = json.load(open('data/metadata/user_data.json', encoding='utf-8'))
+          record = legacy['dev@arcdb.local']['422601']
+          assert record['progress'] == 79, record
+          assert record['status'] == 'finished', record
+          assert not record.get('hidden'), record
+
+          conn = sqlite3.connect('data/arcdb.sqlite3')
+          try:
+              row = conn.execute(
+                  'SELECT progress, status, hidden, payload_json '
+                  'FROM user_novel_state WHERE user_email=? AND novel_key=?',
+                  ('dev@arcdb.local', '422601'),
+              ).fetchone()
+          finally:
+              conn.close()
+          assert row is not None
+          assert row[0] == 79, row
+          assert row[1] == 'finished', row
+          assert row[2] == 0, row
+          assert json.loads(row[3]) == record, (json.loads(row[3]), record)
+          print('Runtime user-state dual-write API parity passed.')
+          PY
+
+          if grep -q '\[STATE-DUAL-WRITE\]\[ERROR\]' server.log; then
+            cat server.log
+            exit 1
+          fi
