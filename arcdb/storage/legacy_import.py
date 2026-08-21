@@ -57,6 +57,7 @@ def replace_from_documents(
             "collection_items",
             "collections",
             "user_novel_state",
+            "user_state_users",
             "users",
             "user_uploads",
             "custom_metadata",
@@ -97,7 +98,12 @@ def replace_from_documents(
             )
 
         for email, raw_states in user_data.items():
-            if not isinstance(raw_states, dict):
+            if isinstance(raw_states, dict):
+                conn.execute(
+                    "INSERT OR IGNORE INTO user_state_users(user_email) VALUES (?)",
+                    (str(email),),
+                )
+            else:
                 continue
             for novel_key, raw in raw_states.items():
                 record = raw if isinstance(raw, dict) else {"_legacy_value": raw}
@@ -181,6 +187,7 @@ def replace_from_documents(
 def state_counts(conn: sqlite3.Connection) -> dict[str, int]:
     tables = (
         "users",
+        "user_state_users",
         "user_novel_state",
         "collections",
         "collection_items",
@@ -201,6 +208,8 @@ def export_user_data(conn: sqlite3.Connection) -> dict[str, Any]:
     if isinstance(source, dict):
         for email, raw in source.items():
             result[str(email)] = {} if isinstance(raw, dict) else raw
+    for row in conn.execute("SELECT user_email FROM user_state_users ORDER BY user_email"):
+        result.setdefault(row["user_email"], {})
     for row in conn.execute(
         "SELECT user_email, novel_key, payload_json FROM user_novel_state ORDER BY user_email, novel_key"
     ):
