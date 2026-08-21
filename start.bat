@@ -5,13 +5,13 @@ cd /d "%~dp0"
 echo === ArchiveDB local launcher ===
 where py >nul 2>nul
 if %errorlevel%==0 (
-    py -3 scripts\dev_bootstrap.py
+    py -3 scripts\dev_bootstrap.py --auto-seed-if-empty
     goto :done
 )
 
 where python >nul 2>nul
 if %errorlevel%==0 (
-    python scripts\dev_bootstrap.py
+    python scripts\dev_bootstrap.py --auto-seed-if-empty
     goto :done
 )
 
