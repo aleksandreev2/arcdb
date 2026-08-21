@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-This document describes where important data lives today and where it should live after staged migration. It is not a promise that production paths exactly match local paths; production paths must be inventoried first.
+This document describes where important data lives today and where it should live after staged migration. Production paths must be inventoried rather than assumed from local development paths.
 
 ## 2. Legacy mutable state
 
@@ -11,7 +11,7 @@ The archived baseline uses files such as:
 | Legacy source | Purpose | Target owner |
 |---|---|---|
 | `users.json` | users/auth/verification/reset metadata | SQLite `users` |
-| `user_data.json` | per-user per-novel state/progress/download flags | SQLite `user_novel_state` |
+| `user_data.json` | per-user per-novel state/progress/download flags | SQLite `user_state_users` + `user_novel_state` |
 | `collections.json` | collections metadata | SQLite `collections` |
 | collection membership embedded in user state | novel membership in collections | SQLite `collection_items` |
 | `user_uploads.json` | uploaded-title metadata/approval | SQLite `user_uploads` |
@@ -20,7 +20,7 @@ The archived baseline uses files such as:
 
 During migration, original payloads are preserved so unknown/unmodeled fields are not silently lost.
 
-## 3. SQLite schema v1
+## 3. SQLite schema v2
 
 ### `schema_meta`
 
@@ -28,13 +28,13 @@ Stores schema metadata such as schema version.
 
 ### `legacy_documents`
 
-Stores the JSON representation imported during migration for audit/round-trip validation. This is a transition aid, not the long-term application API.
+Stores the JSON representation imported during the initial migration for audit/round-trip validation. It is a transition/audit aid, not the runtime source of mutable state.
 
 ### `users`
 
 Primary key: email (case-insensitive).
 
-Important normalized columns currently include:
+Normalized columns currently include:
 
 - password hash;
 - verified flag;
@@ -42,6 +42,24 @@ Important normalized columns currently include:
 - verification code metadata;
 - password reset metadata;
 - original payload JSON.
+
+Users/auth are not yet runtime dual-written in Phase 2A.
+
+### `user_state_users`
+
+Primary key: user email (case-insensitive).
+
+Purpose: represent the existence of a top-level `user_data.json` bucket even when the user has zero per-novel records.
+
+Example legacy state:
+
+```json
+{
+  "user@example.com": {}
+}
+```
+
+Without this table, deleting a user's final `user_novel_state` row would make that empty top-level bucket impossible to distinguish from a user absent from `user_data.json`.
 
 ### `user_novel_state`
 
@@ -55,7 +73,9 @@ Normalized fields:
 - download count;
 - last download time;
 - hidden flag;
-- original payload JSON.
+- complete original/current payload JSON.
+
+Phase 2A runtime dual-write mirrors changed rows in this table after the legacy JSON write succeeds.
 
 ### `collections`
 
@@ -67,11 +87,15 @@ Fields include:
 - sort order;
 - original payload.
 
+Collection metadata runtime dual-write is Phase 2B.
+
 ### `collection_items`
 
 Primary key: `(user_email, collection_id, novel_key)`.
 
-Represents membership separately from the collection metadata.
+Represents membership separately from collection metadata.
+
+Phase 2A already mirrors memberships embedded in a per-novel record whenever that record changes. Phase 2B must cover every dedicated collection mutation route before this table can be considered a complete runtime mirror.
 
 ### `user_uploads`
 
@@ -79,19 +103,49 @@ Primary key: upload id.
 
 Normalized fields include uploader email, approval flag/date/title plus original payload.
 
+Runtime dual-write planned for Phase 2C.
+
 ### `custom_metadata`
 
 Primary key: filename.
 
-Stores original custom metadata payload.
+Stores original custom metadata payload. Runtime dual-write planned for Phase 2C.
 
 ### `allowed_emails`
 
-Primary key: normalized email.
+Primary key: normalized email. Runtime dual-write planned for Phase 2C.
 
-## 4. Data that is intentionally NOT in SQLite state v1
+## 4. Runtime ownership during Phase 2A
 
-These are separate concerns and should not be migrated accidentally as part of user-state cutover:
+For `user_data.json` state:
+
+```text
+legacy JSON
+  - authoritative read source
+  - primary write happens first
+
+SQLite
+  - shadow write of changed rows
+  - immediate per-row verification in local/CI when enabled
+  - full-document semantic parity check available
+```
+
+This is intentionally asymmetric. SQLite must not become authoritative until read-cutover tests are complete.
+
+Relevant feature flags:
+
+```text
+STATE_DUAL_WRITE
+STATE_DUAL_WRITE_STRICT
+STATE_DUAL_WRITE_VERIFY
+STATE_DUAL_WRITE_LOG_SUCCESS
+```
+
+Local development enables strict/verified mirroring by default. Production remains opt-in.
+
+## 5. Data intentionally NOT in SQLite state v2
+
+These are separate concerns and must not be migrated accidentally as part of user-state cutover:
 
 - original EPUB binaries;
 - translated/release EPUB binaries;
@@ -106,13 +160,15 @@ These are separate concerns and should not be migrated accidentally as part of u
 - library discovery/index data;
 - Cloudflare configuration.
 
-## 5. Local development tree
+## 6. Local development tree
 
-Typical local ignored tree:
+Typical ignored tree:
 
 ```text
 data/
 ├── arcdb.sqlite3
+├── migration-backups/
+├── shadow-sidecar-backups/
 ├── metadata/
 │   ├── users.json
 │   ├── user_data.json
@@ -127,9 +183,9 @@ data/
 └── tmp/
 ```
 
-This layout exists for reproducible development. Production paths may differ.
+`shadow-sidecar-backups/` is local-development recovery plumbing used only when a stale shadow DB must be checkpointed/rebuilt after reseeding. It is not the production migration backup format.
 
-## 6. Novel/library identity
+## 7. Novel/library identity
 
 The current code can refer to a title using several values, including numeric/raw/source ids, filenames and library keys. Repeated lookup by scanning lists is a known problem.
 
@@ -141,9 +197,9 @@ Future library indexing should define one stable internal `novel_id` and explici
 - external/source reference;
 - legacy library key.
 
-Do not silently change identifier semantics during the first SQLite user-state migration because `user_data.json` keys must continue to map to the same titles.
+Do not silently change identifier semantics during SQLite user-state migration because existing `user_data.json` keys must keep mapping to the same titles.
 
-## 7. Future library index
+## 8. Future library index
 
 Expected later tables/entities may include:
 
@@ -176,9 +232,9 @@ Expected later tables/entities may include:
 - content hash;
 - optional word count/update time.
 
-These are future plans, not part of schema v1.
+These are future plans, not part of state schema v2.
 
-## 8. Storage semantics
+## 9. Storage semantics
 
 ### Mutable relational state
 
@@ -190,17 +246,17 @@ Use OCI Block Volume for SQLite, unpacked reader content and processing work tha
 
 ### Immutable large objects
 
-Consider R2 later for files such as release EPUBs/covers/images when it reduces origin I/O/egress and operational complexity.
+Consider R2 later for release EPUBs/covers/images when it reduces origin I/O/egress and operational complexity.
 
-## 9. Backup expectations by class
+## 10. Backup expectations by class
 
 ### User state
 
-Must have application-level backup + checksum manifest before migration/cutover.
+Must have application-level backup + checksum manifest before production migration/cutover.
 
 ### SQLite
 
-Use candidate-first promotion and preserve previous SQLite copy. Later add regular consistent SQLite backups/checkpoints.
+Use candidate-first promotion and preserve previous SQLite copy. Before replacing a runtime-used DB, stop/quiesce users and checkpoint it; active WAL/SHM sidecars are a fail-closed condition in production migration tooling.
 
 ### EPUB/chapter data
 
@@ -210,6 +266,6 @@ Do not delete or reorganize during user-state migration. Treat content-storage m
 
 Secret operational state. Never commit. Back up/restore only through secure operational procedures.
 
-## 10. Data-model rule
+## 11. Data-model rule
 
 When adding a normalized column for a legacy field, do not remove the raw/payload fallback until production evidence shows all meaningful legacy fields are explicitly modeled and migration/export tests cover them.
