@@ -4,9 +4,15 @@ __pycache__/
 *.so
 .venv/
 venv/
+
+# Environment files
 .env
 .env.*
 !.env.example
+!.env.local.example
+
+# Local runtime data
+data/
 
 # IDE / OS
 .vscode/
