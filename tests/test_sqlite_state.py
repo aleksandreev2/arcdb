@@ -78,6 +78,7 @@ class SQLiteStateTests(unittest.TestCase):
                     str(SCHEMA_VERSION),
                 )
                 self.assertEqual(counts["users"], 1)
+                self.assertEqual(counts["user_state_users"], 2)
                 self.assertEqual(counts["user_novel_state"], 1)
                 self.assertEqual(counts["collections"], 2)
                 self.assertEqual(counts["collection_items"], 1)
