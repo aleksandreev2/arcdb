@@ -157,7 +157,7 @@ Local bootstrap has one additional convenience path: when a **local-development-
 
 ## Phase 2 — runtime dual-write
 
-Status: in progress. Phase 2A, Phase 2B and Phase 2C are implemented.
+Status: completed for every mutable domain represented by schema v3. Phase 2A, Phase 2B, Phase 2C and Phase 2D are implemented.
 
 ### Write order
 
@@ -235,6 +235,7 @@ Run:
 
 It opens SQLite read-only and verifies:
 
+- the entire `users.json` document, including an empty document and unknown fields;
 - the entire semantic `user_data.json` document;
 - every normalized `collection_items` membership;
 - the entire semantic `collections.json` document;
@@ -295,11 +296,26 @@ Allowlist comments and blank lines remain preserved in the legacy file and migra
 
 ### Phase 2D — users/auth
 
-Next. Migrate auth last within the write phase with dedicated registration/login/verification/reset tests.
+Status: implemented and covered by unit plus real Flask HTTP workflow CI.
+
+Covered:
+
+- `/register` creation and replacement of an unverified record;
+- `/verify` failed-attempt counters, successful verification and verification-field cleanup;
+- `/forgot` reset-code state creation;
+- `/reset_password` failed-attempt counters, password hash replacement and reset-field cleanup;
+- local dev-account creation/update with unknown-field preservation and no rehash when the configured password already matches;
+- complete row payload preservation and normalized auth-field verification;
+- storage-helper deletion for future callers, although the baseline exposes no delete-user endpoint;
+- full `users.json` export parity, including empty documents;
+- disabled, missing, stale and forced-mismatch behavior;
+- real register -> verify -> login -> password reset -> login parity.
+
+Login/logout themselves only read the user record and mutate Flask session state. Admin access changes the already-covered allowlist; baseline user records have no ban/disabled/access fields. Production remains opt-in and fail-safe exactly as in earlier Phase 2 domains.
 
 ## Phase 3 — SQLite read comparison/cutover
 
-Only after sufficient write-domain coverage:
+Phase 2 write coverage is complete for schema v3. Phase 3 must still begin in a separate change:
 
 - add read-source feature flag;
 - run seeded API parity tests;

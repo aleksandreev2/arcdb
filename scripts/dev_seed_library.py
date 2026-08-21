@@ -464,13 +464,13 @@ def main() -> int:
             "epub_count": len(files),
             "epubs": reports,
             **result,
-            "login": {"email": emails[0], "password": env.get("LOCAL_DEV_PASSWORD", "arcdb-dev-123")},
+            "login": {"email": emails[0]},
         }
         write_json(paths["data_root"] / "dev-seed-report.json", report)
     print(f"[seed] Imported {len(result['imported'])} library assets.")
     print(f"[seed] Unused EPUBs retained as test cases in the report: {len(result['unused_epubs'])}")
     print(f"[seed] Report: {paths['data_root'] / 'dev-seed-report.json'}")
-    print(f"[seed] Login: {emails[0]} / {env.get('LOCAL_DEV_PASSWORD', 'arcdb-dev-123')}")
+    print(f"[seed] Local login account: {emails[0]}")
     return 0
 
 

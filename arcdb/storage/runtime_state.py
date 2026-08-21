@@ -76,6 +76,22 @@ def _upload_fields(raw: Any) -> tuple[Any, ...]:
     )
 
 
+def _auth_user_fields(raw: Any) -> tuple[Any, ...]:
+    record = raw if isinstance(raw, dict) else {"_legacy_value": raw}
+    return (
+        record.get("pwd_hash"),
+        1 if record.get("verified") else 0,
+        _float_or_none(record.get("created_at")),
+        record.get("code_hash"),
+        _float_or_none(record.get("code_expires")),
+        _int_or_none(record.get("code_attempts")),
+        record.get("reset_code_hash"),
+        _float_or_none(record.get("reset_code_expires")),
+        _int_or_none(record.get("reset_code_attempts")),
+        _payload(raw),
+    )
+
+
 def _memberships(raw: Any) -> list[str]:
     if not isinstance(raw, dict):
         return []
@@ -269,6 +285,117 @@ def _verify_collection_user(
     ]
     if normalized != expected_normalized:
         raise ShadowStateError(f"SQLite normalized collection fields mismatch for {user_email}.")
+
+
+def _sync_auth_user(conn, email: str, exists: bool, raw: Any) -> None:
+    if not exists:
+        conn.execute("DELETE FROM users WHERE email=?", (email,))
+        return
+    conn.execute(
+        """
+        INSERT INTO users(
+            email, pwd_hash, verified, created_at,
+            code_hash, code_expires, code_attempts,
+            reset_code_hash, reset_code_expires, reset_code_attempts,
+            payload_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(email) DO UPDATE SET
+            email=excluded.email,
+            pwd_hash=excluded.pwd_hash,
+            verified=excluded.verified,
+            created_at=excluded.created_at,
+            code_hash=excluded.code_hash,
+            code_expires=excluded.code_expires,
+            code_attempts=excluded.code_attempts,
+            reset_code_hash=excluded.reset_code_hash,
+            reset_code_expires=excluded.reset_code_expires,
+            reset_code_attempts=excluded.reset_code_attempts,
+            payload_json=excluded.payload_json
+        """,
+        (email, *_auth_user_fields(raw)),
+    )
+
+
+def _verify_auth_user(conn, email: str, exists: bool, expected: Any) -> None:
+    row = conn.execute(
+        """
+        SELECT pwd_hash, verified, created_at,
+               code_hash, code_expires, code_attempts,
+               reset_code_hash, reset_code_expires, reset_code_attempts,
+               payload_json
+        FROM users WHERE email=?
+        """,
+        (email,),
+    ).fetchone()
+    if not exists:
+        if row is not None:
+            raise ShadowStateError(f"Deleted legacy user still exists in SQLite: {email}.")
+        return
+    if row is None:
+        raise ShadowStateError(f"SQLite auth user row is missing: {email}.")
+    actual = (
+        row["pwd_hash"],
+        row["verified"],
+        row["created_at"],
+        row["code_hash"],
+        row["code_expires"],
+        row["code_attempts"],
+        row["reset_code_hash"],
+        row["reset_code_expires"],
+        row["reset_code_attempts"],
+        _payload(json.loads(row["payload_json"])),
+    )
+    if actual != _auth_user_fields(expected):
+        raise ShadowStateError(
+            f"SQLite auth user mismatch for {email}: normalized fields or payload differ."
+        )
+
+
+def mirror_auth_users_changes(
+    before_users: dict[str, Any],
+    after_users: dict[str, Any],
+    *,
+    reason: str,
+) -> list[str]:
+    """Mirror changed users.json records after its durable legacy write succeeds."""
+    if not _enabled():
+        return []
+    if not isinstance(before_users, dict) or not isinstance(after_users, dict):
+        raise ShadowStateError("Dual-write expects users.json to be an object.")
+    changed = sorted(
+        str(email)
+        for email in set(before_users) | set(after_users)
+        if (email in before_users) != (email in after_users)
+        or before_users.get(email) != after_users.get(email)
+    )
+    if not changed:
+        return []
+
+    db_path = _db_path()
+    if not db_path.is_file():
+        raise ShadowStateError(
+            f"SQLite shadow database is missing at {db_path}; run scripts/migrate_state_to_sqlite.py first."
+        )
+    conn = connect_db(db_path)
+    try:
+        _assert_ready(conn)
+        with conn:
+            for email in changed:
+                exists = email in after_users
+                _sync_auth_user(conn, email, exists, after_users.get(email))
+        if _verify_enabled():
+            for email in changed:
+                exists = email in after_users
+                _verify_auth_user(conn, email, exists, after_users.get(email))
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+    if os.environ.get("STATE_DUAL_WRITE_LOG_SUCCESS", "0") == "1":
+        print(f"[STATE-DUAL-WRITE] {reason}: mirrored {len(changed)} auth user(s).")
+    return changed
 
 
 def mirror_user_changes(

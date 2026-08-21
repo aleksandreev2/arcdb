@@ -96,7 +96,9 @@ Implemented in repository:
 - runtime Phase 2A dual-write for hot per-novel user state;
 - runtime Phase 2B dual-write for collection metadata and memberships;
 - runtime Phase 2C dual-write for uploads, custom metadata and allowlist;
-- full user-state, collection metadata, normalized membership and Phase 2C metadata parity checker;
+- runtime Phase 2D dual-write for registration, verification, password-reset and local dev-account user records;
+- complete unknown-field-preserving `users.json` parity and idempotent dev-account bootstrap;
+- full users/auth, user-state, collection metadata, normalized membership and Phase 2C metadata parity checker;
 - real route-level dual-write CI.
 
 SQLite is **not** the read source yet.
@@ -110,7 +112,7 @@ request
   -> local/CI immediate verification
 ```
 
-Covered Phase 2A/2B/2C mutations:
+Covered Phase 2A/2B/2C/2D mutations:
 
 - progress;
 - status;
@@ -126,8 +128,12 @@ Covered Phase 2A/2B/2C mutations:
 - upload submission, approval/update and rejection/delete;
 - custom metadata updates;
 - allowlist add/deduplicate/revoke.
+- registration and replacement of an unverified registration;
+- verification attempts, success and token-field cleanup;
+- password-reset request, attempts, password hash update and token-field cleanup;
+- local dev-account create/update while preserving unknown fields and an already valid hash.
 
-Users/auth are still pending dual-write and remain Phase 2D.
+Every mutable domain represented by the current SQLite state schema is now dual-written. `community.json`, IP-exemption state and append-only audit/download logs are separate baseline state outside schema v3 and are not claimed as migrated.
 
 ## Non-negotiable migration rule
 
@@ -204,16 +210,15 @@ Avoid a full rewrite. Keep Flask and preserve API/UI behavior while extracting r
 
 ## Current next ordered work
 
-1. Dual-write users/auth with dedicated auth tests.
-2. Add SQLite read-source feature flag and comprehensive API parity tests.
-3. Make SQLite primary read source only after stable observation.
-4. Stop JSON writes domain-by-domain; preserve legacy/export rollback paths.
-5. Optimize upload fsync and EPUB streaming.
-6. Move packaging to async jobs.
-7. Split Telethon into its own service.
-8. Build persistent novel/chapter index.
-9. Split static frontend assets.
-10. Introduce R2 selectively for immutable large objects.
+1. Add `STATE_READ_BACKEND=legacy|sqlite` and comprehensive API parity tests.
+2. Make SQLite primary read source only after stable observation.
+3. Stop JSON writes domain-by-domain; preserve legacy/export rollback paths.
+4. Optimize upload fsync and EPUB streaming.
+5. Move packaging to async jobs.
+6. Split Telethon into its own service.
+7. Build persistent novel/chapter index.
+8. Split static frontend assets.
+9. Introduce R2 selectively for immutable large objects.
 
 ## Where to read next
 

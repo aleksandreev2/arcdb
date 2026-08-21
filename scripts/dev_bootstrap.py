@@ -349,10 +349,7 @@ def run_server(py: Path, child_env: dict[str, str], entrypoint: Path) -> int:
     print("\n[ArchiveDB] Starting local server")
     print(f"[ArchiveDB] URL: {url}")
     if child_env.get("ARCHIVEDB_LOCAL_DEV") == "1":
-        print(
-            "[ArchiveDB] Login: "
-            f"{child_env.get('LOCAL_DEV_EMAIL', '')} / {child_env.get('LOCAL_DEV_PASSWORD', '')}"
-        )
+        print(f"[ArchiveDB] Local login account: {child_env.get('LOCAL_DEV_EMAIL', '')}")
     print("[ArchiveDB] Press Ctrl+C to stop.\n")
 
     proc = subprocess.Popen([str(py), str(entrypoint)], cwd=ROOT, env=child_env)

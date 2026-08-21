@@ -27,6 +27,10 @@ class RuntimeOverlayTests(unittest.TestCase):
             'shadow_reason="upload_create"',
             'shadow_reason="upload_approve"',
             'shadow_reason="upload_reject"',
+            'shadow_reason="auth_register"',
+            'shadow_reason="auth_verify"',
+            'shadow_reason="auth_reset_request"',
+            'shadow_reason="auth_password_reset"',
             '"allowlist_add"',
             '"allowlist_remove"',
             "from arcdb.storage.runtime_state import mirror_user_changes",
@@ -34,6 +38,8 @@ class RuntimeOverlayTests(unittest.TestCase):
             "from arcdb.storage.runtime_state import mirror_upload_changes",
             "from arcdb.storage.runtime_state import mirror_custom_metadata_entry",
             "from arcdb.storage.runtime_state import mirror_allowed_emails",
+            "from arcdb.storage.runtime_state import mirror_auth_users_changes",
+            "ARCHIVEDB_AUTH_TEST_MODE",
             "arcdb_legacy_write_succeeded",
         )
         for marker in expected:
