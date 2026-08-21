@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Runtime secrets / sessions
+*.session
+*.session-journal
+sigma_reverse_session*
+*.pem
+*.key
+
+# Runtime databases / user data
+*.db
+*.sqlite
+*.sqlite3
+users.json
+user_data.json
+collections.json
+bookmarks.json
+custom_meta.json
+user_uploads.json
+ip_email_map.json
+ip_exemptions.json
+allowed_gmails.txt
+*.jsonl
+
+# Large generated / source content
+*.epub
+user_uploaded_epubs/
+user_uploaded_covers/
+structured_output/
+batched_epubs/
+output/
+metadata/
+
+# Logs / temp
+*.log
+*.tmp
+*.bak
+tmp/
