@@ -6,8 +6,14 @@ import os
 import urllib.parse
 import urllib.request
 
-LEGACY_URL = os.environ.get("ARCHIVEDB_LEGACY_URL", "http://127.0.0.1:5004").rstrip("/")
-SQLITE_URL = os.environ.get("ARCHIVEDB_SQLITE_URL", "http://127.0.0.1:5005").rstrip("/")
+CONTROL_URL = os.environ.get(
+    "ARCHIVEDB_CONTROL_URL",
+    os.environ.get("ARCHIVEDB_LEGACY_URL", "http://127.0.0.1:5004"),
+).rstrip("/")
+CANDIDATE_URL = os.environ.get(
+    "ARCHIVEDB_CANDIDATE_URL",
+    os.environ.get("ARCHIVEDB_SQLITE_URL", "http://127.0.0.1:5005"),
+).rstrip("/")
 
 
 class Client:
@@ -36,19 +42,25 @@ class Client:
             return response.status, content_type, body, urllib.parse.urlparse(response.geturl()).path
 
 
-def assert_same(legacy: Client, sqlite: Client, path: str, *, form=None, payload=None) -> None:
-    legacy_result = legacy.request(path, form=form, payload=payload)
-    sqlite_result = sqlite.request(path, form=form, payload=payload)
-    assert legacy_result == sqlite_result, (path, legacy_result[:2], sqlite_result[:2])
+def assert_same(
+    control: Client, candidate: Client, path: str, *, form=None, payload=None
+) -> None:
+    control_result = control.request(path, form=form, payload=payload)
+    candidate_result = candidate.request(path, form=form, payload=payload)
+    assert control_result == candidate_result, (
+        path,
+        control_result[:2],
+        candidate_result[:2],
+    )
 
 
 def main() -> int:
     email = "dev@arcdb.local"
     password = "arcdb-dev-123"
-    legacy = Client(LEGACY_URL)
-    sqlite = Client(SQLITE_URL)
+    control = Client(CONTROL_URL)
+    candidate = Client(CANDIDATE_URL)
 
-    assert_same(legacy, sqlite, "/login", form={"email": email, "password": password})
+    assert_same(control, candidate, "/login", form={"email": email, "password": password})
     cases = (
         ("/api/library", {"payload": {"page": 1, "limit": 50}}),
         ("/api/collections", {}),
@@ -59,8 +71,8 @@ def main() -> int:
         ("/admin/access", {}),
     )
     for path, kwargs in cases:
-        assert_same(legacy, sqlite, path, **kwargs)
-    print(f"Legacy/SQLite API parity passed for {len(cases)} authenticated endpoints.")
+        assert_same(control, candidate, path, **kwargs)
+    print(f"Read-backend API parity passed for {len(cases)} authenticated endpoints.")
     return 0
 
 

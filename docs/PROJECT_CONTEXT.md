@@ -102,9 +102,12 @@ Implemented in repository:
 - real route-level dual-write CI;
 - feature-flagged SQLite reads plus simultaneous legacy/SQLite API parity;
 - legacy-serving runtime shadow comparison with payload-free events and strict all-domain CI;
-- explicit-path, read-only production readiness preflight with recursive source-hash stability, full parity and a sanitized non-authorizing report.
+- explicit-path, read-only production readiness preflight with recursive source-hash stability, full parity and a sanitized non-authorizing report;
+- bounded-process shadow-event auditing and a real Flask SQLite-canary -> legacy rollback rehearsal in CI.
 
 SQLite is **not** the default or production read source. Phase 3 now exposes `STATE_READ_BACKEND=legacy|sqlite`; local/CI can run the same authenticated API flows against both backends, while `legacy` remains default. Phase 3B adds `STATE_READ_SHADOW_COMPARE=1` for legacy-served requests: SQLite is read only for equality checking and payload-free match/mismatch/error events, so non-strict observation cannot replace or damage the authoritative response.
+
+Phase 3C adds a fail-closed audit for one bounded process log and tests the immediate configuration rollback by replacing the SQLite-read canary process with a legacy-only process on the same port. Its sanitized report never includes the log path, identities or payloads and does not authorize primary reads. With no SSH/live snapshot, this remains repository readiness evidence only; production reconciliation and observation are still pending.
 
 Current write flow for covered mutations:
 
@@ -185,6 +188,12 @@ Explicit read-only cutover preflight (use discovered production paths, never gue
 .venv\Scripts\python.exe scripts\verify_read_cutover_readiness.py --meta-dir data\metadata --db data\arcdb.sqlite3
 ```
 
+Bounded shadow-log audit (one process log per invocation):
+
+```bat
+.venv\Scripts\python.exe scripts\verify_read_shadow_observation.py --log private-shadow.log --report new-observation-report.json
+```
+
 ## Important source problems already identified
 
 1. JSON whole-file state rewrites.
@@ -225,7 +234,7 @@ Avoid a full rewrite. Keep Flask and preserve API/UI behavior while extracting r
 
 1. Obtain the live inventory/sanitized baseline and run the explicit-path readiness preflight.
 2. Reconcile unknown files and any live source/config differences without overwriting production.
-3. Run legacy-serving shadow comparison for bounded internal traffic and observe payload-free events.
+3. Run legacy-serving shadow comparison for one bounded internal process and validate its payload-free events.
 4. Run a separate bounded SQLite-read canary with tested rollback to `legacy`.
 5. Make SQLite primary read source only after stable observation.
 6. Stop JSON writes domain-by-domain; preserve legacy/export rollback paths.

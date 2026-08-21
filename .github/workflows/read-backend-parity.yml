@@ -29,29 +29,43 @@ jobs:
           set +a
           PYTHONPATH=. PORT=5004 STATE_READ_BACKEND=legacy \
             STATE_READ_SHADOW_COMPARE=1 STATE_READ_SHADOW_STRICT=1 \
-            STATE_READ_SHADOW_REPORT_EVERY=1000 ARCHIVEDB_AUTH_TEST_MODE=1 \
+            STATE_READ_SHADOW_REPORT_EVERY=1 ARCHIVEDB_AUTH_TEST_MODE=1 \
             .venv/bin/python .runtime/source/gallery_app.py > legacy-server.log 2>&1 &
           LEGACY_PID=$!
           PYTHONPATH=. PORT=5005 STATE_READ_BACKEND=sqlite ARCHIVEDB_AUTH_TEST_MODE=1 \
             .venv/bin/python .runtime/source/gallery_app.py > sqlite-server.log 2>&1 &
-          SQLITE_PID=$!
+          CANDIDATE_PID=$!
           cleanup() {
-            kill "$LEGACY_PID" "$SQLITE_PID" 2>/dev/null || true
+            if [[ -n "${LEGACY_PID:-}" ]]; then
+              kill "$LEGACY_PID" 2>/dev/null || true
+            fi
+            if [[ -n "${CANDIDATE_PID:-}" ]]; then
+              kill "$CANDIDATE_PID" 2>/dev/null || true
+            fi
           }
           trap cleanup EXIT
 
-          for port in 5004 5005; do
+          wait_for_server() {
+            local port="$1"
+            local pid="$2"
+            local log="$3"
             for attempt in $(seq 1 120); do
               if curl --fail --silent "http://127.0.0.1:${port}/login" >/dev/null; then
-                break
+                return 0
               fi
-              if ! kill -0 "$LEGACY_PID" 2>/dev/null || ! kill -0 "$SQLITE_PID" 2>/dev/null; then
-                cat legacy-server.log sqlite-server.log
-                exit 1
+              if ! kill -0 "$pid" 2>/dev/null; then
+                cat "$log"
+                return 1
               fi
               sleep 1
             done
-          done
+            echo "Server on port ${port} did not become ready."
+            cat "$log"
+            return 1
+          }
+
+          wait_for_server 5004 "$LEGACY_PID" legacy-server.log
+          wait_for_server 5005 "$CANDIDATE_PID" sqlite-server.log
 
           PYTHONPATH=. .venv/bin/python tests/runtime_read_parity.py
           ARCHIVEDB_TEST_BASE_URL=http://127.0.0.1:5005 \
@@ -65,18 +79,24 @@ jobs:
             --meta-dir data/metadata \
             --db data/arcdb.sqlite3
 
-          for domain in users user_data collections user_uploads custom_meta allowed_emails; do
-            if ! grep -q "\[STATE-READ-SHADOW\] event=match domain=${domain}" legacy-server.log; then
-              echo "No successful runtime shadow comparison was observed for ${domain}."
-              cat legacy-server.log
-              exit 1
-            fi
-          done
+          kill "$LEGACY_PID"
+          wait "$LEGACY_PID" || true
+          LEGACY_PID=""
 
-          if grep -Eq '\[STATE-READ-SHADOW\] event=(mismatch|error)' legacy-server.log; then
-            cat legacy-server.log
-            exit 1
-          fi
+          PYTHONPATH=. .venv/bin/python scripts/verify_read_shadow_observation.py \
+            --log legacy-server.log \
+            --report shadow-observation.json
+          .venv/bin/python - <<'PY'
+          import json
+          report = json.load(open('shadow-observation.json', encoding='utf-8'))
+          assert report['status'] == 'observation_passed', report
+          assert report['decision']['observation_gate_passed'] is True, report
+          assert report['decision']['primary_read_authorized'] is False, report
+          assert set(report['domains']) == {
+              'users', 'user_data', 'collections', 'user_uploads',
+              'custom_meta', 'allowed_emails',
+          }, report
+          PY
 
           if grep -Eq 'Your verification code is|Your password reset code is' legacy-server.log sqlite-server.log; then
             echo 'Auth workflow leaked a fixture code to a server log.'
@@ -85,5 +105,34 @@ jobs:
 
           if grep -q '\[STATE-DUAL-WRITE\]\[ERROR\]' legacy-server.log sqlite-server.log; then
             cat legacy-server.log sqlite-server.log
+            exit 1
+          fi
+
+          PYTHONPATH=. PORT=5004 STATE_READ_BACKEND=legacy \
+            STATE_READ_SHADOW_COMPARE=0 ARCHIVEDB_AUTH_TEST_MODE=1 \
+            .venv/bin/python .runtime/source/gallery_app.py > rollback-control.log 2>&1 &
+          LEGACY_PID=$!
+          wait_for_server 5004 "$LEGACY_PID" rollback-control.log
+
+          kill "$CANDIDATE_PID"
+          wait "$CANDIDATE_PID" || true
+          CANDIDATE_PID=""
+
+          PYTHONPATH=. PORT=5005 STATE_READ_BACKEND=legacy \
+            STATE_READ_SHADOW_COMPARE=0 ARCHIVEDB_AUTH_TEST_MODE=1 \
+            .venv/bin/python .runtime/source/gallery_app.py > rollback-server.log 2>&1 &
+          CANDIDATE_PID=$!
+          wait_for_server 5005 "$CANDIDATE_PID" rollback-server.log
+
+          ARCHIVEDB_CANDIDATE_URL=http://127.0.0.1:5005 \
+            PYTHONPATH=. .venv/bin/python tests/runtime_read_parity.py
+
+          if grep -q '\[STATE-READ-SHADOW\]' rollback-control.log rollback-server.log; then
+            echo 'Legacy rollback unexpectedly performed shadow comparisons.'
+            cat rollback-control.log rollback-server.log
+            exit 1
+          fi
+          if grep -Eq 'StateReadError|StateReadComparisonError|\[STATE-DUAL-WRITE\]\[ERROR\]' rollback-control.log rollback-server.log; then
+            cat rollback-control.log rollback-server.log
             exit 1
           fi

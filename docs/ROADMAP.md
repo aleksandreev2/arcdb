@@ -102,7 +102,7 @@ Phase 2 exit criteria:
 
 ## Phase 3 — SQLite read cutover
 
-Status: comparison backend, seeded API parity and legacy-serving shadow observability implemented; production rollout/primary-read promotion pending.
+Status: comparison backend, seeded API parity, legacy-serving shadow observability and canary rollback rehearsal implemented; production rollout/primary-read promotion pending.
 
 Implemented:
 
@@ -116,13 +116,15 @@ Implemented:
 - process-local counters plus payload-free match/mismatch/error events for every schema-v3 read domain;
 - strict CI coverage for mismatch, missing SQLite, secret-safe logs and all-domain real Flask reads;
 - explicit-path, read-only readiness preflight that checks one consistent SQLite snapshot, full parity, schema/integrity/FK health and recursive legacy source-hash stability;
-- overwrite-refusing sanitized readiness reports that explicitly leave canary/primary authorization false.
+- overwrite-refusing sanitized readiness reports that explicitly leave canary/primary authorization false;
+- fail-closed audit of one bounded process's payload-free shadow events with complete six-domain coverage;
+- real Flask CI rehearsal that replaces the SQLite-read canary process with legacy on the same port and repeats authenticated API parity.
 
 Pending:
 
 1. obtain a live inventory/sanitized baseline and run the readiness preflight on explicit production paths;
 2. reconcile unknown files and live code/config differences;
-3. enable legacy-serving shadow comparison for bounded internal traffic and observe its events;
+3. enable legacy-serving shadow comparison for one bounded internal process and validate its events;
 4. enable SQLite reads only for a separate bounded internal canary;
 5. promote SQLite as primary read source only after stable observation;
 6. keep legacy files and rollback controls.

@@ -73,7 +73,8 @@ Completed:
 - strict local dual-write verification and end-to-end CI;
 - Phase 3 feature-flagged read adapters plus simultaneous legacy/SQLite API parity;
 - Phase 3B legacy-serving SQLite shadow comparison with process-local counters, payload-free events and strict all-domain CI;
-- read-only cutover readiness preflight with full parity, SQLite health checks, recursive source-hash stability and a payload-free report that cannot authorize cutover by itself.
+- read-only cutover readiness preflight with full parity, SQLite health checks, recursive source-hash stability and a payload-free report that cannot authorize cutover by itself;
+- Phase 3C shadow-observation evidence validation plus a real Flask SQLite-canary -> legacy rollback rehearsal in CI.
 
 Still pending:
 
@@ -85,7 +86,7 @@ Still pending:
 - Telethon service split;
 - R2/static edge migration.
 
-## Current state ownership during Phase 3B
+## Current state ownership during Phase 3C
 
 ```text
 request
@@ -102,6 +103,8 @@ reads
 The SQLite mirror must never be treated as authoritative yet.
 
 Phase 3 now provides `STATE_READ_BACKEND=legacy|sqlite` across schema-v3 state domains. `legacy` is mandatory as the default. SQLite mode is for verified local/internal API comparison and must fail closed on a missing, stale or invalid database. Phase 3B adds opt-in `STATE_READ_SHADOW_COMPARE=1` while legacy remains selected: each covered read compares SQLite, returns the legacy result and emits payload-free match/mismatch/error events. Mutation helpers still read legacy directly before the durable legacy-first write.
+
+Phase 3C adds `scripts/verify_read_shadow_observation.py`. It audits the payload-free events from one explicitly bounded process log, fails on mismatch/error/malformed/unknown/reset counters, requires all six schema-v3 domains and emits a new path-free report that still leaves primary-read authorization false. CI also stops the SQLite-read process, starts a legacy-only process on the same canary port and repeats authenticated endpoint parity. This is a rehearsal, not evidence that production traffic or production state was observed.
 
 Local defaults:
 
@@ -212,13 +215,14 @@ At minimum:
 - for storage changes, add parity/round-trip/integrity tests;
 - for any migration, prove source files were not modified;
 - keep the explicit read-cutover preflight green and its report free of paths, identities and payloads;
+- keep the bounded shadow-observation audit and SQLite-canary -> legacy rollback rehearsal green;
 - update docs when architecture, storage ownership or rollout state changes.
 
 ## Next ordered work
 
 1. Obtain the live inventory/sanitized baseline and run the explicit read-only readiness preflight against discovered production paths.
 2. Review unknown-file counts and reconcile any live code/config differences.
-3. Enable legacy-serving shadow comparison for bounded internal traffic and observe payload-free match/mismatch/error events.
+3. Enable legacy-serving shadow comparison for one bounded process, retain its private raw log and validate the payload-free events with `scripts/verify_read_shadow_observation.py`.
 4. Enable SQLite reads only for a bounded internal canary with immediate rollback to `legacy`.
 5. Make SQLite primary reads only after stable observation.
 6. Stop legacy writes domain-by-domain later; keep rollback exports and legacy archives.
