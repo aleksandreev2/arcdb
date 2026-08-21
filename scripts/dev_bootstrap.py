@@ -12,6 +12,8 @@ import venv
 import webbrowser
 from pathlib import Path
 
+from materialize_baseline import materialize
+
 ROOT = Path(__file__).resolve().parents[1]
 VENV_DIR = ROOT / ".venv"
 ENV_FILE = ROOT / ".env"
@@ -151,7 +153,15 @@ def wait_for_server_and_open(url: str, proc: subprocess.Popen, env: dict[str, st
             time.sleep(0.25)
 
 
-def run_server(py: Path, child_env: dict[str, str]) -> int:
+def ensure_source() -> Path:
+    source = materialize(ROOT / ".runtime" / "source")
+    entrypoint = source / "gallery_app.py"
+    if not entrypoint.exists():
+        raise RuntimeError(f"Baseline entrypoint is missing: {entrypoint}")
+    return entrypoint
+
+
+def run_server(py: Path, child_env: dict[str, str], entrypoint: Path) -> int:
     url = browser_url(child_env)
     print("\n[ArchiveDB] Starting local server")
     print(f"[ArchiveDB] URL: {url}")
@@ -162,7 +172,7 @@ def run_server(py: Path, child_env: dict[str, str]) -> int:
         )
     print("[ArchiveDB] Press Ctrl+C to stop.\n")
 
-    proc = subprocess.Popen([str(py), str(ROOT / "gallery_app.py")], cwd=ROOT, env=child_env)
+    proc = subprocess.Popen([str(py), str(entrypoint)], cwd=ROOT, env=child_env)
     try:
         wait_for_server_and_open(url, proc, child_env)
         return proc.wait()
@@ -178,6 +188,7 @@ def run_server(py: Path, child_env: dict[str, str]) -> int:
 def main() -> int:
     os.chdir(ROOT)
     env_values = ensure_env()
+    entrypoint = ensure_source()
     py = ensure_venv()
     ensure_dependencies(py)
 
@@ -185,7 +196,7 @@ def main() -> int:
     child_env.update(env_values)
     ensure_local_directories(child_env)
     seed_dev_account(py, child_env)
-    return run_server(py, child_env)
+    return run_server(py, child_env, entrypoint)
 
 
 if __name__ == "__main__":
