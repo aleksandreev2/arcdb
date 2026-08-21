@@ -14,6 +14,12 @@ venv/
 # Local runtime data
 data/
 .runtime/
+.dev-backups/
+
+# Local dev fixture payloads (large EPUB/ZIP files stay outside Git)
+Downloads.zip
+dev-fixtures/inbox/*
+!dev-fixtures/inbox/.gitkeep
 
 # IDE / OS
 .vscode/
