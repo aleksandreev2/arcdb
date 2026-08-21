@@ -28,3 +28,39 @@ jobs:
           test -f .runtime/source/templates/login.html
           test -f .runtime/source/templates/gallery.html
           test -f .runtime/source/templates/reader.html
+
+  local-bootstrap-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Start ArchiveDB through the real local bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          CI=1 python scripts/dev_bootstrap.py > server.log 2>&1 &
+          BOOT_PID=$!
+          cleanup() {
+            pkill -P "$BOOT_PID" 2>/dev/null || true
+            kill "$BOOT_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          for attempt in $(seq 1 120); do
+            if curl --fail --silent --show-error http://127.0.0.1:5004/login >/dev/null; then
+              echo "ArchiveDB local bootstrap smoke test passed."
+              exit 0
+            fi
+            if ! kill -0 "$BOOT_PID" 2>/dev/null; then
+              echo "Bootstrap exited before the server became ready."
+              cat server.log
+              exit 1
+            fi
+            sleep 1
+          done
+
+          echo "Server did not become ready in time."
+          cat server.log
+          exit 1
