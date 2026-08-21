@@ -19,8 +19,9 @@ start.bat
 3. creates a local `.env` from `.env.local.example`;
 4. generates a random local Flask secret;
 5. creates the local `data/` tree;
-6. creates a local development login;
-7. starts ArchiveDB at `http://127.0.0.1:5004/login` and opens it in the browser.
+6. verifies and reconstructs the checked-in development baseline into `.runtime/source/`;
+7. creates a local development login;
+8. starts ArchiveDB at `http://127.0.0.1:5004/login` and opens it in the browser.
 
 Default local login:
 
@@ -55,6 +56,8 @@ data/
 └── tmp/
 ```
 
+The reconstructed source and temporary baseline ZIP live under ignored `.runtime/`.
+
 Telegram is disabled locally by default (`ARCHIVEDB_NO_TELEGRAM=1`). SMTP is optional; when SMTP credentials are absent, verification codes are printed to the terminal.
 
 ## Current production architecture (known so far)
@@ -76,13 +79,15 @@ Production credentials, Telegram sessions, user databases, EPUBs, extracted chap
 ## Repository layout
 
 ```text
-gallery_app.py              current development baseline server
-templates/                  Flask templates
-scripts/dev_bootstrap.py    local environment/dependency/bootstrap launcher
-scripts/dev_seed.py         local-only account seed
-scripts/oracle_inventory.sh read-only production inventory helper
-docs/ARCHITECTURE.md        architecture notes
+baseline/                       temporary checked-in compressed source baseline
+scripts/materialize_baseline.py verifies + extracts it to `.runtime/source/`
+scripts/dev_bootstrap.py        local environment/dependency/bootstrap launcher
+scripts/dev_seed.py             local-only account seed
+scripts/oracle_inventory.sh     read-only production inventory helper
+docs/ARCHITECTURE.md            architecture notes
 ```
+
+The baseline bundle is temporary plumbing for the initial archive import. As the application is refactored, source files will move into a normal directly tracked package layout.
 
 ## Production caution
 
