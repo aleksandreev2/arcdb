@@ -32,6 +32,54 @@ arcdb-dev-123
 
 The local account exists only inside ignored `data/` files. Change `LOCAL_DEV_EMAIL` / `LOCAL_DEV_PASSWORD` in `.env` if desired.
 
+### Seed a populated development library
+
+Library/data seeding is **never run by `start.bat`**. It only happens when you explicitly run:
+
+```text
+seed-dev.bat
+```
+
+Put the supplied fixture archive at either location:
+
+```text
+dev-fixtures/inbox/Downloads.zip
+```
+
+or:
+
+```text
+Downloads.zip
+```
+
+You can also drag a ZIP/EPUB/folder onto `seed-dev.bat` or run:
+
+```bat
+seed-dev.bat "D:\path\to\Downloads.zip"
+```
+
+`seed-dev.bat` first runs `scripts/dev_bootstrap.py --setup-only`, so it automatically creates the virtual environment and installs/updates dependencies without starting Flask. It then resets **only local dev data**, scans the EPUB fixtures and creates a production-like local library.
+
+The supplied fixture set currently seeds:
+
+- RAW EPUBs into `data/batched_epubs/`;
+- a RAW + translated pair for `S급 헌터들의 가이드가 되었다` / `Я стал куратором охотников S-ранга`;
+- `Регрессор Академии яндере` as a large translated-reader fixture;
+- `Мои сексуальные университетские подружки` as another translated-reader fixture;
+- RAW-only Korean novels for filtering/download testing;
+- local metadata, users, reading progress, collections and community chat data;
+- `data/dev-seed-report.json` with EPUB metadata, hashes, counts, validation issues and unused alternate EPUBs.
+
+PDF and `.file` entries in a fixture ZIP are ignored. Alternative EPUB versions that are not selected by `dev-fixtures/seed-manifest.json` remain visible in the seed report as test cases but are not added as duplicate library cards.
+
+For safety the seeder refuses to run unless all of these are true:
+
+- `ARCHIVEDB_LOCAL_DEV=1`;
+- `HOST` is loopback-only;
+- every writable ArchiveDB data path resolves inside this checkout's `data/` directory.
+
+Before replacing an existing seed it backs up the small JSON/CSV state into `.dev-backups/` and keeps the three most recent backups. Large derived EPUB/chapter folders are regenerated instead of duplicated in backups.
+
 ### Subsequent updates
 
 Double-click:
@@ -53,10 +101,11 @@ data/
 ├── structured_output/
 ├── batched_epubs/
 ├── telegram/
-└── tmp/
+├── tmp/
+└── dev-seed-report.json
 ```
 
-The reconstructed source and temporary baseline ZIP live under ignored `.runtime/`.
+The reconstructed source and temporary baseline ZIP live under ignored `.runtime/`. Large EPUB/ZIP fixtures in `dev-fixtures/inbox/` are also ignored.
 
 Telegram is disabled locally by default (`ARCHIVEDB_NO_TELEGRAM=1`). SMTP is optional; when SMTP credentials are absent, verification codes are printed to the terminal.
 
@@ -80,10 +129,15 @@ Production credentials, Telegram sessions, user databases, EPUBs, extracted chap
 
 ```text
 baseline/                       temporary checked-in compressed source baseline
-scripts/materialize_baseline.py verifies + extracts it to `.runtime/source/`
+dev-fixtures/seed-manifest.json reproducible local library fixture mapping
+dev-fixtures/inbox/             ignored location for Downloads.zip / EPUBs
+seed-dev.bat                    explicit Windows local-data seed launcher
+scripts/materialize_baseline.py verifies + extracts baseline to `.runtime/source/`
 scripts/dev_bootstrap.py        local environment/dependency/bootstrap launcher
-scripts/dev_seed.py             local-only account seed
+scripts/dev_seed.py             local-only login seed
+scripts/dev_seed_library.py     EPUB scanner + local library/state seeder
 scripts/oracle_inventory.sh     read-only production inventory helper
+tests/make_seed_fixtures.py     tiny generated EPUB fixtures used by CI
 docs/ARCHITECTURE.md            architecture notes
 ```
 
