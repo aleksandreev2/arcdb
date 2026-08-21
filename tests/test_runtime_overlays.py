@@ -40,6 +40,13 @@ class RuntimeOverlayTests(unittest.TestCase):
             "from arcdb.storage.runtime_state import mirror_allowed_emails",
             "from arcdb.storage.runtime_state import mirror_auth_users_changes",
             "ARCHIVEDB_AUTH_TEST_MODE",
+            "from arcdb.storage.runtime_reads import read_users",
+            "from arcdb.storage.runtime_reads import read_user_data",
+            "from arcdb.storage.runtime_reads import read_collections",
+            "from arcdb.storage.runtime_reads import read_user_uploads",
+            "from arcdb.storage.runtime_reads import read_custom_meta",
+            "from arcdb.storage.runtime_reads import read_allowed_emails",
+            "mirror_allowed_emails(_get_allowed_emails_legacy()",
             "arcdb_legacy_write_succeeded",
         )
         for marker in expected:

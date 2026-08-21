@@ -148,6 +148,8 @@ SQLite
 
 This is intentionally asymmetric. SQLite must not become authoritative until read-cutover tests are complete.
 
+Phase 3 can export the live normalized/payload tables through a read-only SQLite connection when `STATE_READ_BACKEND=sqlite`. The default is `legacy`. Write helpers bypass the read adapter and load legacy state directly so the required durable legacy-first sequence cannot be inverted by the read flag.
+
 Relevant feature flags:
 
 ```text

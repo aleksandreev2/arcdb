@@ -1,0 +1,71 @@
+name: State Read Backend CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  read-backend-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Prepare identical seeded legacy and SQLite state
+        run: |
+          CI=1 python scripts/dev_bootstrap.py --setup-only
+          .venv/bin/python tests/make_seed_fixtures.py dev-fixtures/inbox/Downloads.zip
+          CI=1 python scripts/dev_bootstrap.py --setup-only --auto-seed-if-empty
+
+      - name: Compare real Flask API output across read backends
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -a
+          source .env
+          set +a
+          PYTHONPATH=. PORT=5004 STATE_READ_BACKEND=legacy ARCHIVEDB_AUTH_TEST_MODE=1 \
+            .venv/bin/python .runtime/source/gallery_app.py > legacy-server.log 2>&1 &
+          LEGACY_PID=$!
+          PYTHONPATH=. PORT=5005 STATE_READ_BACKEND=sqlite ARCHIVEDB_AUTH_TEST_MODE=1 \
+            .venv/bin/python .runtime/source/gallery_app.py > sqlite-server.log 2>&1 &
+          SQLITE_PID=$!
+          cleanup() {
+            kill "$LEGACY_PID" "$SQLITE_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          for port in 5004 5005; do
+            for attempt in $(seq 1 120); do
+              if curl --fail --silent "http://127.0.0.1:${port}/login" >/dev/null; then
+                break
+              fi
+              if ! kill -0 "$LEGACY_PID" 2>/dev/null || ! kill -0 "$SQLITE_PID" 2>/dev/null; then
+                cat legacy-server.log sqlite-server.log
+                exit 1
+              fi
+              sleep 1
+            done
+          done
+
+          PYTHONPATH=. .venv/bin/python tests/runtime_read_parity.py
+          ARCHIVEDB_TEST_BASE_URL=http://127.0.0.1:5005 \
+            PYTHONPATH=. .venv/bin/python tests/runtime_collection_workflow.py
+          ARCHIVEDB_TEST_BASE_URL=http://127.0.0.1:5005 \
+            PYTHONPATH=. .venv/bin/python tests/runtime_metadata_workflow.py
+          ARCHIVEDB_TEST_BASE_URL=http://127.0.0.1:5005 \
+            PYTHONPATH=. .venv/bin/python tests/runtime_auth_workflow.py
+          PYTHONPATH=. .venv/bin/python scripts/verify_state_parity.py
+
+          if grep -Eq 'Your verification code is|Your password reset code is' legacy-server.log sqlite-server.log; then
+            echo 'Auth workflow leaked a fixture code to a server log.'
+            exit 1
+          fi
+
+          if grep -q '\[STATE-DUAL-WRITE\]\[ERROR\]' legacy-server.log sqlite-server.log; then
+            cat legacy-server.log sqlite-server.log
+            exit 1
+          fi

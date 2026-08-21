@@ -101,7 +101,7 @@ Implemented in repository:
 - full users/auth, user-state, collection metadata, normalized membership and Phase 2C metadata parity checker;
 - real route-level dual-write CI.
 
-SQLite is **not** the read source yet.
+SQLite is **not** the default or production read source. Phase 3 now exposes `STATE_READ_BACKEND=legacy|sqlite`; local/CI can run the same authenticated API flows against both backends, while `legacy` remains default.
 
 Current write flow for covered mutations:
 
@@ -210,7 +210,7 @@ Avoid a full rewrite. Keep Flask and preserve API/UI behavior while extracting r
 
 ## Current next ordered work
 
-1. Add `STATE_READ_BACKEND=legacy|sqlite` and comprehensive API parity tests.
+1. Reconcile live production, verify its shadow and compare bounded internal legacy/SQLite API reads.
 2. Make SQLite primary read source only after stable observation.
 3. Stop JSON writes domain-by-domain; preserve legacy/export rollback paths.
 4. Optimize upload fsync and EPUB streaming.
