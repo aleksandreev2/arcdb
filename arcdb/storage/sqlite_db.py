@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS schema_meta (
@@ -46,6 +46,10 @@ CREATE TABLE IF NOT EXISTS user_novel_state (
     hidden INTEGER NOT NULL DEFAULT 0,
     payload_json TEXT NOT NULL,
     PRIMARY KEY (user_email, novel_key)
+);
+
+CREATE TABLE IF NOT EXISTS collection_users (
+    user_email TEXT PRIMARY KEY COLLATE NOCASE
 );
 
 CREATE TABLE IF NOT EXISTS collections (
