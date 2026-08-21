@@ -27,6 +27,7 @@ class SQLiteStateTests(unittest.TestCase):
             }
         }
         user_data = {
+            "empty@arcdb.local": {},
             "dev@arcdb.local": {
                 "422601": {
                     "status": "reading",
@@ -40,6 +41,7 @@ class SQLiteStateTests(unittest.TestCase):
             }
         }
         collections = {
+            "empty@arcdb.local": [],
             "dev@arcdb.local": [
                 {"id": "reading", "name": "Читаю"},
                 {"id": "later", "name": "Позже", "extra": 1},
