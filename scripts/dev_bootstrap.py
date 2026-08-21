@@ -127,6 +127,58 @@ def seed_dev_account(py: Path, child_env: dict[str, str]) -> None:
     )
 
 
+def _has_any_epub_or_html(path: Path) -> bool:
+    if not path.exists():
+        return False
+    if path.is_file():
+        return path.suffix.lower() in {".epub", ".html", ".htm", ".xhtml"}
+    for candidate in path.rglob("*"):
+        if candidate.is_file() and candidate.suffix.lower() in {".epub", ".html", ".htm", ".xhtml"}:
+            return True
+    return False
+
+
+def local_library_is_empty(env: dict[str, str]) -> bool:
+    structured_raw = env.get("STRUCTURED_OUTPUT_DIR", "./data/structured_output")
+    batched_raw = env.get("BATCHED_EPUBS_DIR", "./data/batched_epubs")
+    structured = Path(structured_raw)
+    batched = Path(batched_raw)
+    if not structured.is_absolute():
+        structured = ROOT / structured
+    if not batched.is_absolute():
+        batched = ROOT / batched
+    return not (_has_any_epub_or_html(structured) or _has_any_epub_or_html(batched))
+
+
+def fixture_source_available() -> bool:
+    inbox = ROOT / "dev-fixtures" / "inbox"
+    if (inbox / "Downloads.zip").is_file():
+        return True
+    if not inbox.is_dir():
+        return False
+    return any(p.is_file() and p.suffix.lower() == ".epub" for p in inbox.iterdir())
+
+
+def auto_seed_library_if_empty(py: Path, child_env: dict[str, str]) -> None:
+    if child_env.get("ARCHIVEDB_LOCAL_DEV") != "1":
+        return
+    if not local_library_is_empty(child_env):
+        print("[setup] Local library already contains data; automatic seed skipped.")
+        return
+    if not fixture_source_available():
+        print("[setup] Local library is empty and no dev fixtures were found; automatic seed skipped.")
+        return
+
+    print("[setup] Local library is empty; seeding from dev-fixtures/inbox...")
+    subprocess.run(
+        [str(py), str(ROOT / "scripts" / "dev_seed_library.py")],
+        cwd=ROOT,
+        env=child_env,
+        check=True,
+    )
+    print("[setup] Local library seed completed.")
+
+
 def browser_url(env: dict[str, str]) -> str:
     host = env.get("HOST", "127.0.0.1")
     if host in {"0.0.0.0", "::"}:
@@ -193,6 +245,11 @@ def main() -> int:
         action="store_true",
         help="Create .env/.venv, install dependencies and seed the local login without starting Flask.",
     )
+    parser.add_argument(
+        "--auto-seed-if-empty",
+        action="store_true",
+        help="In local dev only, seed the library once when it is empty and dev fixtures are available.",
+    )
     args = parser.parse_args()
 
     os.chdir(ROOT)
@@ -204,6 +261,8 @@ def main() -> int:
     child_env = os.environ.copy()
     child_env.update(env_values)
     ensure_local_directories(child_env)
+    if args.auto_seed_if_empty:
+        auto_seed_library_if_empty(py, child_env)
     seed_dev_account(py, child_env)
 
     if args.setup_only:
