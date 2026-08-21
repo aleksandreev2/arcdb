@@ -65,6 +65,17 @@ def _record_fields(raw: Any) -> tuple[Any, ...]:
     )
 
 
+def _upload_fields(raw: Any) -> tuple[Any, ...]:
+    record = raw if isinstance(raw, dict) else {"_legacy_value": raw}
+    return (
+        record.get("uploader_email"),
+        1 if record.get("approved") else 0,
+        record.get("upload_date"),
+        record.get("title_en") or record.get("raw_title") or record.get("title"),
+        _payload(raw),
+    )
+
+
 def _memberships(raw: Any) -> list[str]:
     if not isinstance(raw, dict):
         return []
@@ -349,3 +360,181 @@ def mirror_collection_user(
             f"for {user_email}."
         )
     return len(validated)
+
+
+def _sync_upload(conn, upload_id: str, exists: bool, raw: Any) -> None:
+    if not exists:
+        conn.execute("DELETE FROM user_uploads WHERE upload_id=?", (upload_id,))
+        return
+    conn.execute(
+        """
+        INSERT INTO user_uploads(
+            upload_id, uploader_email, approved, upload_date, title, payload_json
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(upload_id) DO UPDATE SET
+            uploader_email=excluded.uploader_email,
+            approved=excluded.approved,
+            upload_date=excluded.upload_date,
+            title=excluded.title,
+            payload_json=excluded.payload_json
+        """,
+        (upload_id, *_upload_fields(raw)),
+    )
+
+
+def _verify_upload(conn, upload_id: str, exists: bool, expected: Any) -> None:
+    row = conn.execute(
+        """
+        SELECT uploader_email, approved, upload_date, title, payload_json
+        FROM user_uploads WHERE upload_id=?
+        """,
+        (upload_id,),
+    ).fetchone()
+    if not exists:
+        if row is not None:
+            raise ShadowStateError(f"Deleted legacy upload still exists in SQLite: {upload_id}.")
+        return
+    if row is None:
+        raise ShadowStateError(f"SQLite upload row is missing: {upload_id}.")
+    actual = (
+        row["uploader_email"],
+        row["approved"],
+        row["upload_date"],
+        row["title"],
+        _payload(json.loads(row["payload_json"])),
+    )
+    if actual != _upload_fields(expected):
+        raise ShadowStateError(f"SQLite upload mismatch: {upload_id}.")
+
+
+def mirror_upload_changes(
+    before_uploads: dict[str, Any],
+    after_uploads: dict[str, Any],
+    *,
+    reason: str,
+) -> list[str]:
+    """Mirror changed upload records after user_uploads.json is durable."""
+    if not _enabled():
+        return []
+    if not isinstance(before_uploads, dict) or not isinstance(after_uploads, dict):
+        raise ShadowStateError("Dual-write expects user_uploads.json to be an object.")
+    changed = sorted(
+        key
+        for key in set(before_uploads) | set(after_uploads)
+        if (key in before_uploads) != (key in after_uploads)
+        or before_uploads.get(key) != after_uploads.get(key)
+    )
+    if not changed:
+        return []
+
+    db_path = _db_path()
+    if not db_path.is_file():
+        raise ShadowStateError(
+            f"SQLite shadow database is missing at {db_path}; run scripts/migrate_state_to_sqlite.py first."
+        )
+    conn = connect_db(db_path)
+    try:
+        _assert_ready(conn)
+        with conn:
+            for upload_id in changed:
+                exists = upload_id in after_uploads
+                raw = after_uploads.get(upload_id)
+                _sync_upload(conn, str(upload_id), exists, raw)
+        if _verify_enabled():
+            for upload_id in changed:
+                exists = upload_id in after_uploads
+                raw = after_uploads.get(upload_id)
+                _verify_upload(conn, str(upload_id), exists, raw)
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+    if os.environ.get("STATE_DUAL_WRITE_LOG_SUCCESS", "0") == "1":
+        print(f"[STATE-DUAL-WRITE] {reason}: mirrored {len(changed)} upload(s).")
+    return changed
+
+
+def mirror_custom_metadata_entry(filename: str, raw: Any, *, reason: str) -> None:
+    """Upsert one custom_meta.json entry after the legacy JSON write succeeds."""
+    if not _enabled():
+        return
+    db_path = _db_path()
+    if not db_path.is_file():
+        raise ShadowStateError(
+            f"SQLite shadow database is missing at {db_path}; run scripts/migrate_state_to_sqlite.py first."
+        )
+    conn = connect_db(db_path)
+    try:
+        _assert_ready(conn)
+        with conn:
+            conn.execute(
+                """
+                INSERT INTO custom_metadata(filename, payload_json) VALUES (?, ?)
+                ON CONFLICT(filename) DO UPDATE SET payload_json=excluded.payload_json
+                """,
+                (str(filename), _payload(raw)),
+            )
+        if _verify_enabled():
+            row = conn.execute(
+                "SELECT payload_json FROM custom_metadata WHERE filename=?",
+                (str(filename),),
+            ).fetchone()
+            if row is None or _payload(json.loads(row[0])) != _payload(raw):
+                raise ShadowStateError(f"SQLite custom metadata mismatch: {filename}.")
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    if os.environ.get("STATE_DUAL_WRITE_LOG_SUCCESS", "0") == "1":
+        print(f"[STATE-DUAL-WRITE] {reason}: mirrored custom metadata for {filename}.")
+
+
+def mirror_allowed_emails(emails: Any, *, reason: str) -> int:
+    """Replace the normalized allowlist after allowed_gmails.txt is durable."""
+    if not _enabled():
+        return 0
+    if isinstance(emails, (str, bytes)):
+        raise ShadowStateError("Dual-write expects an iterable of allowlist email values.")
+    try:
+        normalized = sorted(
+            {
+                str(email).strip().lower()
+                for email in emails
+                if str(email).strip()
+            }
+        )
+    except TypeError as exc:
+        raise ShadowStateError("Dual-write expects an iterable of allowlist email values.") from exc
+
+    db_path = _db_path()
+    if not db_path.is_file():
+        raise ShadowStateError(
+            f"SQLite shadow database is missing at {db_path}; run scripts/migrate_state_to_sqlite.py first."
+        )
+    conn = connect_db(db_path)
+    try:
+        _assert_ready(conn)
+        with conn:
+            conn.execute("DELETE FROM allowed_emails")
+            conn.executemany(
+                "INSERT INTO allowed_emails(email) VALUES (?)",
+                [(email,) for email in normalized],
+            )
+        if _verify_enabled():
+            actual = [
+                row[0]
+                for row in conn.execute("SELECT email FROM allowed_emails ORDER BY email")
+            ]
+            if actual != normalized:
+                raise ShadowStateError("SQLite allowlist mismatch.")
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    if os.environ.get("STATE_DUAL_WRITE_LOG_SUCCESS", "0") == "1":
+        print(f"[STATE-DUAL-WRITE] {reason}: mirrored {len(normalized)} allowed email(s).")
+    return len(normalized)

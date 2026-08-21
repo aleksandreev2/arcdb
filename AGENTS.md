@@ -58,11 +58,15 @@ Completed:
   - community collection import;
   - explicit empty `collections.json` user containers through schema v3 `collection_users`;
 - full `collections.json` and normalized `collection_items` parity verification;
+- runtime dual-write Phase 2C for:
+  - upload create, approval/update and rejection/delete state;
+  - custom metadata upserts;
+  - allowlist add/revoke with normalized set semantics;
+- full `user_uploads.json`, `custom_meta.json` and semantic allowlist parity verification;
 - strict local dual-write verification and end-to-end CI.
 
 Still pending:
 
-- uploads/custom metadata/allowlist dual-write;
 - users/auth dual-write;
 - SQLite reads in Flask;
 - removal of JSON writes;
@@ -72,7 +76,7 @@ Still pending:
 - Telethon service split;
 - R2/static edge migration.
 
-## Current state ownership during Phase 2B
+## Current state ownership during Phase 2C
 
 ```text
 request
@@ -96,7 +100,7 @@ STATE_DUAL_WRITE_VERIFY=1
 
 Production should leave `STATE_DUAL_WRITE` disabled until the explicit production shadow migration/cutover procedure is followed.
 
-`start.bat` verifies complete local `user_data.json`, `collection_items` and `collections.json` parity before starting. If the local shadow is missing/stale, it can rebuild it from JSON. This automatic rebuild behavior is deliberately local-development only.
+`start.bat` verifies complete local parity for `user_data.json`, `collection_items`, `collections.json`, `user_uploads.json`, `custom_meta.json` and the semantic allowlist before starting. If the local shadow is missing/stale, it can rebuild it from legacy files. This automatic rebuild behavior is deliberately local-development only.
 
 ## Storage migration sequence
 
@@ -192,11 +196,10 @@ At minimum:
 
 ## Next ordered work
 
-1. Dual-write upload/custom metadata/allowlist state.
-2. Dual-write users/auth with dedicated auth tests.
-3. Add SQLite read-source feature flag and API parity suite.
-4. Move reads to SQLite only after stable parity.
-5. Stop legacy writes domain-by-domain later; keep rollback exports and legacy archives.
+1. Dual-write users/auth with dedicated auth tests.
+2. Add SQLite read-source feature flag and API parity suite.
+3. Move reads to SQLite only after stable parity.
+4. Stop legacy writes domain-by-domain later; keep rollback exports and legacy archives.
 
 Do not jump directly to read cutover while write domains are incomplete.
 

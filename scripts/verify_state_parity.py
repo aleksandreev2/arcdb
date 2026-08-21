@@ -10,6 +10,7 @@ if str(ROOT) not in sys.path:
 
 from arcdb.storage.state_parity import (  # noqa: E402
     verify_collections_parity,
+    verify_metadata_domains_parity,
     verify_user_data_parity,
 )
 
@@ -43,11 +44,26 @@ def main() -> int:
     collections_path = resolve_path(
         env.get("COLLECTIONS_PATH"), meta_dir / "collections.json"
     )
+    user_uploads_path = resolve_path(
+        env.get("USER_UPLOADS_PATH"), meta_dir / "user_uploads.json"
+    )
+    custom_meta_path = resolve_path(
+        env.get("CUSTOM_META_PATH"), meta_dir / "custom_meta.json"
+    )
+    allowed_emails_path = resolve_path(
+        env.get("ALLOWED_EMAILS_PATH"), meta_dir / "allowed_gmails.txt"
+    )
     db_path = resolve_path(env.get("SQLITE_DB_PATH"), ROOT / "data" / "arcdb.sqlite3")
 
     user_counts = verify_user_data_parity(user_data_path=user_data_path, db_path=db_path)
     collection_counts = verify_collections_parity(
         collections_path=collections_path, db_path=db_path
+    )
+    metadata_counts = verify_metadata_domains_parity(
+        user_uploads_path=user_uploads_path,
+        custom_meta_path=custom_meta_path,
+        allowed_emails_path=allowed_emails_path,
+        db_path=db_path,
     )
     print(
         "State parity: OK "
@@ -55,7 +71,10 @@ def main() -> int:
         f"{user_counts['records']} per-novel records; "
         f"{user_counts['memberships']} memberships; "
         f"{collection_counts['users']} collection containers, "
-        f"{collection_counts['collections']} collections)"
+        f"{collection_counts['collections']} collections; "
+        f"{metadata_counts['uploads']} uploads, "
+        f"{metadata_counts['custom_metadata']} custom metadata entries, "
+        f"{metadata_counts['allowed_emails']} allowed emails)"
     )
     return 0
 

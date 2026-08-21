@@ -5,7 +5,13 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from .legacy_import import export_collections, export_user_data
+from .legacy_import import (
+    export_allowed_emails,
+    export_collections,
+    export_custom_meta,
+    export_user_data,
+    export_user_uploads,
+)
 from .runtime_state import ShadowStateError
 from .sqlite_db import SCHEMA_VERSION
 
@@ -26,6 +32,27 @@ def load_legacy_collections(path: Path) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise ShadowStateError(f"Legacy collections is not an object: {path}")
     return data
+
+
+def load_legacy_object(path: Path, label: str) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ShadowStateError(f"Legacy {label} is not an object: {path}")
+    return data
+
+
+def load_legacy_allowed_emails(path: Path) -> list[str]:
+    if not path.exists():
+        return []
+    return sorted(
+        {
+            line.strip().lower()
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        }
+    )
 
 
 def _connect_readonly(db_path: Path) -> sqlite3.Connection:
@@ -147,3 +174,50 @@ def verify_collections_parity(*, collections_path: Path, db_path: Path) -> dict[
 
     rows = sum(len(value) for value in legacy.values() if isinstance(value, list))
     return {"users": len(legacy), "collections": rows}
+
+
+def verify_metadata_domains_parity(
+    *,
+    user_uploads_path: Path,
+    custom_meta_path: Path,
+    allowed_emails_path: Path,
+    db_path: Path,
+) -> dict[str, int]:
+    legacy_uploads = load_legacy_object(user_uploads_path, "user_uploads")
+    legacy_custom = load_legacy_object(custom_meta_path, "custom_meta")
+    legacy_allowed = load_legacy_allowed_emails(allowed_emails_path)
+    if not db_path.is_file():
+        raise ShadowStateError(f"SQLite shadow database is missing: {db_path}")
+
+    conn = _connect_readonly(db_path)
+    try:
+        version = conn.execute(
+            "SELECT value FROM schema_meta WHERE key='schema_version'"
+        ).fetchone()
+        if version is None or str(version[0]) != str(SCHEMA_VERSION):
+            raise ShadowStateError(
+                f"SQLite shadow schema mismatch: expected {SCHEMA_VERSION}, "
+                f"got {None if version is None else version[0]}."
+            )
+        shadow_uploads = export_user_uploads(conn)
+        shadow_custom = export_custom_meta(conn)
+        shadow_allowed = export_allowed_emails(conn)
+    finally:
+        conn.close()
+
+    mismatches = []
+    if shadow_uploads != legacy_uploads:
+        mismatches.append("user_uploads.json")
+    if shadow_custom != legacy_custom:
+        mismatches.append("custom_meta.json")
+    if shadow_allowed != legacy_allowed:
+        mismatches.append("allowed_gmails.txt")
+    if mismatches:
+        raise ShadowStateError(
+            "Legacy/SQLite metadata parity failed for: " + ", ".join(mismatches)
+        )
+    return {
+        "uploads": len(legacy_uploads),
+        "custom_metadata": len(legacy_custom),
+        "allowed_emails": len(legacy_allowed),
+    }

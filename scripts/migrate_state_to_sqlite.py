@@ -50,7 +50,13 @@ def read_json(path: Path, default):
 def read_allowed(path: Path) -> list[str]:
     if not path.exists():
         return []
-    return [line.strip().lower() for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return sorted(
+        {
+            line.strip().lower()
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        }
+    )
 
 
 def update_manifest(path: Path, **values) -> None:

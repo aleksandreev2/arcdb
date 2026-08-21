@@ -132,7 +132,7 @@ The comparison must include:
 - normalized `collection_items` against every membership embedded in `user_data.json`;
 - uploads;
 - custom metadata;
-- allowlist.
+- allowlist as the unique lowercase set of non-comment email entries; preserve the original file formatting in the verified snapshot.
 
 Unknown legacy fields must survive migration via preserved payloads until they are explicitly modeled.
 

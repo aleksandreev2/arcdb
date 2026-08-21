@@ -72,10 +72,13 @@ Status: implemented and covered by dedicated runtime CI.
 
 ### 2C — uploads/custom metadata/allowlist
 
-- upload metadata and approval transitions;
-- custom metadata changes;
-- allowlist changes;
-- admin mutation tests.
+Status: implemented and covered by dedicated runtime CI.
+
+- upload create, approval/update and rejection/delete transitions;
+- custom metadata upserts;
+- allowlist add/deduplicate/revoke with runtime-equivalent normalization;
+- admin mutation tests plus real upload processing;
+- full legacy/SQLite parity for all three domains.
 
 ### 2D — users/auth
 
@@ -220,18 +223,17 @@ After process-local state is removed/split:
 ## Current immediate order
 
 ```text
-1. uploads/custom metadata/allowlist dual-write
-2. users/auth dual-write
-3. SQLite read feature flag + API parity
-4. SQLite primary reads
-5. stop legacy writes domain-by-domain
-6. immediate upload/EPUB I/O fixes
-7. async packager
-8. Telethon split
-9. persistent library index
-10. frontend/static split
-11. R2/Cloudflare optimization
-12. production rollout after live reconciliation
+1. users/auth dual-write
+2. SQLite read feature flag + API parity
+3. SQLite primary reads
+4. stop legacy writes domain-by-domain
+5. immediate upload/EPUB I/O fixes
+6. async packager
+7. Telethon split
+8. persistent library index
+9. frontend/static split
+10. R2/Cloudflare optimization
+11. production rollout after live reconciliation
 ```
 
 ## Explicit non-goals for now

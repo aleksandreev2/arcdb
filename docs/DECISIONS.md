@@ -222,3 +222,17 @@ Do not depend on the immutable initial `legacy_documents` snapshot to reconstruc
 Reasoning:
 
 Deleting a user's final child row must not make an existing empty top-level bucket indistinguishable from an absent user. Runtime parity and reverse export must reproduce the current legacy document exactly, including empty containers.
+
+## ADR-015 — Allowlist parity is semantic, while the source file is preserved
+
+Status: accepted.
+
+Decision:
+
+Treat `allowed_gmails.txt` as a unique lowercase set of non-comment, non-blank email entries when importing, dual-writing, verifying and exporting normalized SQLite state.
+
+Preserve the original byte-for-byte file, including comments and formatting, in migration snapshots. Do not model comments as `allowed_emails` rows.
+
+Reasoning:
+
+The Flask access check already ignores comments, blank lines, duplicate entries and email case. SQLite parity must match that runtime authorization meaning rather than accidentally treating a comment as an allowed identity. Backup scope still retains the complete original file for audit and rollback.

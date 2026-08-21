@@ -99,7 +99,7 @@ It performs `git pull --ff-only` and then launches `start.bat`.
 
 ## SQLite shadow migration
 
-ArchiveDB is migrating hot mutable state away from whole-file JSON rewrites. The current repository contains a SQLite WAL shadow schema/importer plus Phase 2A user-state and Phase 2B collection dual-write, but the Flask baseline has **not yet been switched to SQLite as production source of truth**.
+ArchiveDB is migrating hot mutable state away from whole-file JSON rewrites. The current repository contains a SQLite WAL shadow schema/importer plus Phase 2A user-state, Phase 2B collection and Phase 2C uploads/custom-metadata/allowlist dual-write, but the Flask baseline has **not yet been switched to SQLite as production source of truth**.
 
 Local safe migration test:
 
