@@ -25,6 +25,41 @@ Before touching production state:
 
 For the first production pass, prefer a brief maintenance/read-only window so source state cannot change between snapshot and cutover. If no maintenance window is possible, runtime dual-write and a more careful consistent-snapshot protocol are required.
 
+## Recommended two-step production use
+
+After production paths in `.env` have been verified, first prepare without promotion:
+
+```bash
+python scripts/migrate_state_to_sqlite.py \
+  --verify \
+  --require-core \
+  --no-promote
+```
+
+This creates:
+
+- timestamped byte-for-byte legacy snapshot;
+- `manifest.json` with SHA-256/size/path information;
+- a fully verified candidate SQLite database;
+- no change to the current SQLite target.
+
+Inspect the printed paths and verify the backup independently:
+
+```bash
+python scripts/verify_migration_backup.py /path/to/migration-backups/TIMESTAMP \
+  --check-current-sources
+```
+
+For the actual promotion, rerun the migration without `--no-promote` while writers are quiesced:
+
+```bash
+python scripts/migrate_state_to_sqlite.py \
+  --verify \
+  --require-core
+```
+
+The tool creates a fresh verified snapshot/candidate again before promotion. Do not promote an old candidate after production state has changed.
+
 ## Safe migration protocol
 
 ### Step 1 — discover source files
@@ -56,11 +91,19 @@ Copy the source files without modifying them. For every file record:
 
 Write this information to `manifest.json` in the backup directory.
 
+The implemented migration snapshots every existing file recursively under `META_DIR` plus explicitly configured core state/CSV paths. This deliberately preserves files that schema v1 does not yet understand.
+
 ### Step 3 — verify backup
 
 Hash the backup copies and compare them against the source hashes. If any mismatch occurs, abort.
 
 A backup that has not been verified is not considered a backup.
+
+Independent verification command:
+
+```bash
+python scripts/verify_migration_backup.py /path/to/TIMESTAMP --check-current-sources
+```
 
 ### Step 4 — create a candidate database
 
@@ -69,7 +112,7 @@ Never import directly into the active database file.
 Create a separate file such as:
 
 ```text
-arcdb.sqlite3.candidate-YYYYMMDD-HHMMSS
+arcdb.sqlite3.candidate-YYYYMMDD-HHMMSS-PID
 ```
 
 Import legacy documents into this candidate.
@@ -112,6 +155,8 @@ Also verify expected schema version and `journal_mode=wal` when opened as the ru
 
 Recalculate hashes of every legacy source file and compare them with the Step 2 hashes.
 
+The tool also detects added/removed files inside the metadata snapshot scope. If the running application changes state while the candidate is being built, promotion fails closed.
+
 If any source changed unexpectedly, do not promote the candidate. Determine whether the application wrote state during the migration and repeat using a consistent window/protocol.
 
 ### Step 8 — candidate promotion
@@ -119,10 +164,13 @@ If any source changed unexpectedly, do not promote the candidate. Determine whet
 Only after every verification succeeds:
 
 1. close/checkpoint the candidate SQLite connection;
-2. if an old SQLite target exists, rename it to a timestamped `pre-migration` backup;
-3. atomically rename the verified candidate to the target path where the filesystem permits atomic rename;
-4. never delete the old SQLite backup during this operation;
-5. keep the legacy snapshot and legacy live files.
+2. refuse promotion if an existing target has WAL/SHM sidecars, because it may be active/uncheckpointed;
+3. create a checksum-verified copy of an existing SQLite target;
+4. move the previous target to a `pre-migration-original` backup path;
+5. atomically rename the verified candidate to the target path where the filesystem permits atomic rename;
+6. verify the promoted database again;
+7. automatically restore the prior target if post-promotion verification fails and a prior target existed;
+8. keep the legacy snapshot and legacy live files.
 
 Promotion is the first point at which the target SQLite path changes. Legacy sources still do not change.
 
@@ -156,8 +204,18 @@ Rollback is trivial: disable dual-write/SQLite feature flags and continue using 
 Preferred rollback options, in order:
 
 1. switch read feature flag back to legacy files if they remained current via dual-write;
-2. restore the previous SQLite database from the preserved pre-migration copy;
+2. restore the previous SQLite database from the preserved pre-migration copy/original;
 3. export verified SQLite state back to legacy format only through explicit tested export tooling.
+
+Create a reverse export into a **new directory**:
+
+```bash
+python scripts/export_sqlite_to_legacy.py \
+  --db /path/to/arcdb.sqlite3 \
+  --output-dir /path/to/new-rollback-export
+```
+
+The exporter refuses to overwrite an existing output directory and reads the generated JSON/TXT files back before reporting success. It does not overwrite live legacy files.
 
 Never manually copy partial table contents in an emergency unless there is no safer option.
 
@@ -199,4 +257,5 @@ A migration is successful only when:
 - SQLite integrity checks pass;
 - candidate promotion succeeds;
 - application smoke tests pass;
-- rollback artifacts still exist after deployment.
+- rollback artifacts still exist after deployment;
+- a reverse-export path has been tested for migrated domains.
