@@ -236,3 +236,21 @@ Preserve the original byte-for-byte file, including comments and formatting, in 
 Reasoning:
 
 The Flask access check already ignores comments, blank lines, duplicate entries and email case. SQLite parity must match that runtime authorization meaning rather than accidentally treating a comment as an allowed identity. Backup scope still retains the complete original file for audit and rollback.
+
+## ADR-016 — Mirror auth users as complete opaque payloads after legacy durability
+
+Status: accepted for Phase 2D.
+
+Decision:
+
+- keep the existing `users` schema v3 table and do not change password/token formats;
+- atomically write `users.json` first, then upsert/delete only changed SQLite user rows;
+- retain every original user value in `payload_json`, including unknown fields;
+- normalize known password, verification and reset fields only for querying/verification;
+- keep login/logout reads and Flask sessions on the legacy path during Phase 2;
+- make local dev-account seeding idempotent when the configured password already matches;
+- suppress auth message bodies in the controlled local CI workflow and never print passwords or recovered codes.
+
+Reasoning:
+
+Auth is the highest-risk write domain. The existing table already models every known baseline auth field while `payload_json` prevents production-only fields from being lost. Keeping the durable legacy write first preserves the established rollback source, and a separate real HTTP workflow proves registration, verification, login and reset behavior without combining read cutover.

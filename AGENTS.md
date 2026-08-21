@@ -63,11 +63,17 @@ Completed:
   - custom metadata upserts;
   - allowlist add/revoke with normalized set semantics;
 - full `user_uploads.json`, `custom_meta.json` and semantic allowlist parity verification;
+- runtime dual-write Phase 2D for users/auth:
+  - registration and re-registration of unverified accounts;
+  - email verification attempts/success and verification-field cleanup;
+  - password-reset request, attempts, password-hash replacement and reset-field cleanup;
+  - local dev-account creation/update without rehashing an already valid password;
+  - complete unknown-field-preserving user payloads and delete support in the storage helper;
+- full `users.json` <-> SQLite parity verification, including an empty document;
 - strict local dual-write verification and end-to-end CI.
 
 Still pending:
 
-- users/auth dual-write;
 - SQLite reads in Flask;
 - removal of JSON writes;
 - production data/runtime cutover;
@@ -76,7 +82,7 @@ Still pending:
 - Telethon service split;
 - R2/static edge migration.
 
-## Current state ownership during Phase 2C
+## Current state ownership after Phase 2D
 
 ```text
 request
@@ -100,7 +106,9 @@ STATE_DUAL_WRITE_VERIFY=1
 
 Production should leave `STATE_DUAL_WRITE` disabled until the explicit production shadow migration/cutover procedure is followed.
 
-`start.bat` verifies complete local parity for `user_data.json`, `collection_items`, `collections.json`, `user_uploads.json`, `custom_meta.json` and the semantic allowlist before starting. If the local shadow is missing/stale, it can rebuild it from legacy files. This automatic rebuild behavior is deliberately local-development only.
+`start.bat` verifies complete local parity for `users.json`, `user_data.json`, `collection_items`, `collections.json`, `user_uploads.json`, `custom_meta.json` and the semantic allowlist before starting. If the local shadow is missing/stale, it can rebuild it from legacy files. This automatic rebuild behavior is deliberately local-development only.
+
+All mutable domains represented by the current SQLite state schema are now runtime dual-written. Other baseline files such as community state, IP exemptions and append-only audit/download logs are not part of this schema and must not be described as migrated.
 
 ## Storage migration sequence
 
@@ -196,10 +204,9 @@ At minimum:
 
 ## Next ordered work
 
-1. Dual-write users/auth with dedicated auth tests.
-2. Add SQLite read-source feature flag and API parity suite.
-3. Move reads to SQLite only after stable parity.
-4. Stop legacy writes domain-by-domain later; keep rollback exports and legacy archives.
+1. Add `STATE_READ_BACKEND=legacy|sqlite` behind a feature flag and an API parity suite.
+2. Move reads to SQLite only after stable parity.
+3. Stop legacy writes domain-by-domain later; keep rollback exports and legacy archives.
 
 Do not jump directly to read cutover while write domains are incomplete.
 

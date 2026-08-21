@@ -37,7 +37,7 @@ start.bat
 6. verifies and reconstructs the checked-in development baseline into `.runtime/source/`;
 7. creates/maintains the local development login;
 8. if the local library is empty and EPUB fixtures exist in `dev-fixtures/inbox`, seeds once;
-9. creates or verifies the schema v3 SQLite shadow and full user/collection parity;
+9. creates or verifies the schema v3 SQLite shadow and full auth/user/collection/metadata parity;
 10. starts ArchiveDB at `http://127.0.0.1:5004/login` and opens it in the browser.
 
 Normal startup does **not** reset an already populated local library.
@@ -99,7 +99,7 @@ It performs `git pull --ff-only` and then launches `start.bat`.
 
 ## SQLite shadow migration
 
-ArchiveDB is migrating hot mutable state away from whole-file JSON rewrites. The current repository contains a SQLite WAL shadow schema/importer plus Phase 2A user-state, Phase 2B collection and Phase 2C uploads/custom-metadata/allowlist dual-write, but the Flask baseline has **not yet been switched to SQLite as production source of truth**.
+ArchiveDB is migrating hot mutable state away from whole-file JSON rewrites. Phase 2A user-state, Phase 2B collections, Phase 2C uploads/custom-metadata/allowlist and Phase 2D users/auth now dual-write to the verified SQLite WAL shadow after the durable legacy write. The Flask baseline still reads legacy files and has **not** switched SQLite to the production source of truth.
 
 Local safe migration test:
 
@@ -139,7 +139,7 @@ data/
 
 The reconstructed source and temporary baseline ZIP live under ignored `.runtime/`. Large EPUB/ZIP fixtures in `dev-fixtures/inbox/` are also ignored.
 
-Telegram is disabled locally by default (`ARCHIVEDB_NO_TELEGRAM=1`). SMTP is optional; when SMTP credentials are absent, verification codes are printed to the terminal.
+Telegram is disabled locally by default (`ARCHIVEDB_NO_TELEGRAM=1`). SMTP is optional. The auth CI uses only fixture accounts plus a local-only suppressed email sink and derives fixture codes from stored hashes without printing passwords or codes.
 
 ## Current production architecture (known so far)
 

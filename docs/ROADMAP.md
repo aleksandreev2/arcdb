@@ -33,7 +33,7 @@ Production execution is still pending because real OCI paths/live source must be
 
 ## Phase 2 — runtime state dual-write
 
-Status: in progress.
+Status: completed for every mutable domain represented by SQLite schema v3.
 
 ### 2A — per-novel user state
 
@@ -82,13 +82,16 @@ Status: implemented and covered by dedicated runtime CI.
 
 ### 2D — users/auth
 
-Do last within write migration because auth has higher correctness/security risk.
+Status: implemented and covered by unit plus real Flask auth workflow CI.
 
-- registration/verification;
-- password hashes;
-- reset-code state;
-- account/access changes;
-- dedicated login/reset/admin tests.
+- registration and unverified re-registration;
+- verification attempts/success and verification token cleanup;
+- password-reset request, attempts, password hash replacement and reset token cleanup;
+- complete payload preservation, including unknown fields;
+- create/update/idempotent/delete storage-helper coverage;
+- missing/stale/disabled shadow and strict mismatch coverage;
+- existing dev account plus repeated idempotent bootstrap;
+- real register -> verify -> login -> reset -> login workflow.
 
 Phase 2 exit criteria:
 
@@ -223,17 +226,16 @@ After process-local state is removed/split:
 ## Current immediate order
 
 ```text
-1. users/auth dual-write
-2. SQLite read feature flag + API parity
-3. SQLite primary reads
-4. stop legacy writes domain-by-domain
-5. immediate upload/EPUB I/O fixes
-6. async packager
-7. Telethon split
-8. persistent library index
-9. frontend/static split
-10. R2/Cloudflare optimization
-11. production rollout after live reconciliation
+1. SQLite read feature flag + API parity
+2. SQLite primary reads
+3. stop legacy writes domain-by-domain
+4. immediate upload/EPUB I/O fixes
+5. async packager
+6. Telethon split
+7. persistent library index
+8. frontend/static split
+9. R2/Cloudflare optimization
+10. production rollout after live reconciliation
 ```
 
 ## Explicit non-goals for now

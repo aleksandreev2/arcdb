@@ -2,10 +2,15 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import tempfile
 from pathlib import Path
 
-from werkzeug.security import generate_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
+
+from arcdb.storage.sqlite_db import SCHEMA_VERSION
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def atomic_json_write(path: Path, data: dict) -> None:
@@ -23,6 +28,29 @@ def atomic_json_write(path: Path, data: dict) -> None:
             os.unlink(tmp_name)
         except FileNotFoundError:
             pass
+
+
+def ready_shadow_path() -> Path | None:
+    if os.environ.get("STATE_DUAL_WRITE", "0") != "1":
+        return None
+    raw = os.environ.get("SQLITE_DB_PATH", "./data/arcdb.sqlite3")
+    path = Path(raw)
+    if not path.is_absolute():
+        path = ROOT / path
+    path = path.resolve()
+    if not path.is_file():
+        return None
+    try:
+        conn = sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=5.0)
+        try:
+            row = conn.execute(
+                "SELECT value FROM schema_meta WHERE key='schema_version'"
+            ).fetchone()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return None
+    return path if row is not None and str(row[0]) == str(SCHEMA_VERSION) else None
 
 
 def main() -> int:
@@ -48,15 +76,32 @@ def main() -> int:
         except (OSError, json.JSONDecodeError):
             pass
 
+    before_users = json.loads(json.dumps(users))
     previous = users.get(email) if isinstance(users.get(email), dict) else {}
+    previous_hash = str(previous.get("pwd_hash") or "")
+    try:
+        password_matches = bool(previous_hash) and check_password_hash(
+            previous_hash, password
+        )
+    except (TypeError, ValueError):
+        password_matches = False
     users[email] = {
         **previous,
-        "pwd_hash": generate_password_hash(password),
+        "pwd_hash": (
+            previous_hash if password_matches else generate_password_hash(password)
+        ),
         "verified": True,
         "created_at": previous.get("created_at", 0),
         "dev_managed": True,
     }
-    atomic_json_write(users_path, users)
+    if users != before_users:
+        atomic_json_write(users_path, users)
+
+    shadow_path = ready_shadow_path()
+    if shadow_path is not None and users != before_users:
+        from arcdb.storage.runtime_state import mirror_auth_users_changes
+
+        mirror_auth_users_changes(before_users, users, reason="dev_account_seed")
 
     allowed_path.parent.mkdir(parents=True, exist_ok=True)
     existing = set()
@@ -72,7 +117,12 @@ def main() -> int:
                 fh.write("\n")
             fh.write(email + "\n")
 
-    print(f"[dev] Local login: {email} / {password}")
+        if shadow_path is not None:
+            from arcdb.storage.runtime_state import mirror_allowed_emails
+
+            mirror_allowed_emails(existing | {email}, reason="dev_allowlist_seed")
+
+    print(f"[dev] Local login account ready: {email}")
     return 0
 
 

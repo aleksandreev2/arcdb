@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-OVERLAY_VERSION = "metadata-dual-write-v1"
+OVERLAY_VERSION = "users-auth-dual-write-v1"
 
 
 def overlay_digest() -> str:
@@ -42,6 +42,19 @@ def _replace_in_section(
 
 def apply_gallery_app_overlay(path: Path) -> None:
     text = path.read_text(encoding="utf-8")
+
+    text = _replace_once(
+        text,
+        '''if not (SMTP_USER and SMTP_PASS):
+    _warn("SMTP_USER/SMTP_PASS not set - verification codes will only print to the console.")''',
+        '''if not (SMTP_USER and SMTP_PASS):
+    if (os.environ.get("ARCHIVEDB_AUTH_TEST_MODE", "0") == "1"
+            and os.environ.get("ARCHIVEDB_LOCAL_DEV", "0") == "1"):
+        _warn("SMTP is disabled; local auth test message bodies are suppressed.")
+    else:
+        _warn("SMTP_USER/SMTP_PASS not set - verification codes will only print to the console.")''',
+        "local auth test SMTP warning",
+    )
 
     old_mutator = '''def mutate_user_data(mutator):
     with _USER_DATA_LOCK:
@@ -225,6 +238,52 @@ def remove_email_from_allowlist(email):'''
         new_allowlist_lock,
         "allowlist shadow helper",
     )
+
+    old_users_mutator = '''def mutate_users(mutator):
+    with _USERS_LOCK:
+        data = _load_users_unlocked()
+        result = mutator(data)
+        write_json_atomic(USERS_PATH, data)
+        return result
+'''
+    new_users_mutator = '''def mutate_users(mutator, shadow_reason="users_auth"):
+    with _USERS_LOCK:
+        data = _load_users_unlocked()
+        before_users = json.loads(json.dumps(data))
+        result = mutator(data)
+        write_json_atomic(USERS_PATH, data)
+        try:
+            from arcdb.storage.runtime_state import mirror_auth_users_changes
+            mirror_auth_users_changes(before_users, data, reason=shadow_reason)
+        except Exception as exc:
+            print(f"[STATE-DUAL-WRITE][ERROR] {shadow_reason}: {exc}")
+            if os.environ.get("STATE_DUAL_WRITE_STRICT", "0") == "1":
+                raise
+        return result
+'''
+    text = _replace_once(
+        text,
+        old_users_mutator,
+        new_users_mutator,
+        "users auth shadow hook",
+    )
+
+    text = _replace_in_section(
+        text,
+        start="def send_email(to_addr, subject, body):",
+        end="def login_required(f):",
+        old='''    if not (SMTP_USER and SMTP_PASS):
+        print(f"[EMAIL] (SMTP not configured) to={_log_safe(to_addr)} :: {_log_safe(body)}")
+        return True''',
+        new='''    if not (SMTP_USER and SMTP_PASS):
+        if (os.environ.get("ARCHIVEDB_AUTH_TEST_MODE", "0") == "1"
+                and os.environ.get("ARCHIVEDB_LOCAL_DEV", "0") == "1"):
+            print(f"[EMAIL] Local auth test message suppressed for {_log_safe(to_addr)}.")
+        else:
+            print(f"[EMAIL] (SMTP not configured) to={_log_safe(to_addr)} :: {_log_safe(body)}")
+        return True''',
+        label="local auth test email sink",
+    )
     text = _replace_in_section(
         text,
         start="def remove_email_from_allowlist(email):",
@@ -295,6 +354,39 @@ def remove_email_from_allowlist(email):'''
         'mutate_user_data(_record_download)',
         'mutate_user_data(_record_download, shadow_email=user_email, shadow_reason="telegram_download")',
         "telegram download counter",
+    )
+
+    text = _replace_in_section(
+        text,
+        start='@app.route("/register", methods=["GET", "POST"])',
+        end='@app.route("/verify", methods=["GET", "POST"])',
+        old='mutate_users(m)',
+        new='mutate_users(m, shadow_reason="auth_register")',
+        label="auth register",
+    )
+    text = _replace_in_section(
+        text,
+        start='@app.route("/verify", methods=["GET", "POST"])',
+        end='@app.route("/login", methods=["GET", "POST"])',
+        old='mutate_users(m)',
+        new='mutate_users(m, shadow_reason="auth_verify")',
+        label="auth verify",
+    )
+    text = _replace_in_section(
+        text,
+        start='@app.route("/forgot", methods=["GET", "POST"])',
+        end='@app.route("/reset_password", methods=["GET", "POST"])',
+        old='mutate_users(m)',
+        new='mutate_users(m, shadow_reason="auth_reset_request")',
+        label="auth reset request",
+    )
+    text = _replace_in_section(
+        text,
+        start='@app.route("/reset_password", methods=["GET", "POST"])',
+        end='if __name__ == "__main__":',
+        old='mutate_users(m)',
+        new='mutate_users(m, shadow_reason="auth_password_reset")',
+        label="auth password reset",
     )
 
     text = _replace_in_section(

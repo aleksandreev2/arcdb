@@ -181,6 +181,8 @@ Promotion is the first point at which the target SQLite path changes. Legacy sou
 
 Database file migration and application cutover are separate events.
 
+Repository Phase 2D completes runtime dual-write for all mutable domains currently represented by SQLite schema v3, including full `users.json` payloads. This does not authorize production enablement: the live baseline/paths must still be reconciled, a verified production shadow must exist and `STATE_DUAL_WRITE` remains opt-in. Community/IP-exemption/audit files outside schema v3 are not silently included in this claim.
+
 Recommended order:
 
 1. SQLite shadow DB exists and verifies successfully.

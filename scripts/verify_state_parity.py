@@ -12,6 +12,7 @@ from arcdb.storage.state_parity import (  # noqa: E402
     verify_collections_parity,
     verify_metadata_domains_parity,
     verify_user_data_parity,
+    verify_users_parity,
 )
 
 
@@ -40,6 +41,7 @@ def main() -> int:
     env = os.environ.copy()
     env.update(parse_env(ROOT / ".env"))
     meta_dir = resolve_path(env.get("META_DIR"), ROOT / "data" / "metadata")
+    users_path = resolve_path(env.get("USERS_PATH"), meta_dir / "users.json")
     user_data_path = resolve_path(env.get("USER_DATA_PATH"), meta_dir / "user_data.json")
     collections_path = resolve_path(
         env.get("COLLECTIONS_PATH"), meta_dir / "collections.json"
@@ -55,6 +57,7 @@ def main() -> int:
     )
     db_path = resolve_path(env.get("SQLITE_DB_PATH"), ROOT / "data" / "arcdb.sqlite3")
 
+    auth_counts = verify_users_parity(users_path=users_path, db_path=db_path)
     user_counts = verify_user_data_parity(user_data_path=user_data_path, db_path=db_path)
     collection_counts = verify_collections_parity(
         collections_path=collections_path, db_path=db_path
@@ -67,7 +70,8 @@ def main() -> int:
     )
     print(
         "State parity: OK "
-        f"({user_counts['users']} user-state containers, "
+        f"({auth_counts['users']} auth users; "
+        f"{user_counts['users']} user-state containers, "
         f"{user_counts['records']} per-novel records; "
         f"{user_counts['memberships']} memberships; "
         f"{collection_counts['users']} collection containers, "

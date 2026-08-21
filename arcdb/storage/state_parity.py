@@ -11,6 +11,7 @@ from .legacy_import import (
     export_custom_meta,
     export_user_data,
     export_user_uploads,
+    export_users,
 )
 from .runtime_state import ShadowStateError
 from .sqlite_db import SCHEMA_VERSION
@@ -78,6 +79,40 @@ def _legacy_memberships(legacy: dict[str, Any]) -> set[tuple[str, str, str]]:
                 if collection_id is not None
             )
     return memberships
+
+
+def verify_users_parity(*, users_path: Path, db_path: Path) -> dict[str, int]:
+    legacy = load_legacy_object(users_path, "users")
+    if not db_path.is_file():
+        raise ShadowStateError(f"SQLite shadow database is missing: {db_path}")
+
+    conn = _connect_readonly(db_path)
+    try:
+        version = conn.execute(
+            "SELECT value FROM schema_meta WHERE key='schema_version'"
+        ).fetchone()
+        if version is None or str(version[0]) != str(SCHEMA_VERSION):
+            raise ShadowStateError(
+                f"SQLite shadow schema mismatch: expected {SCHEMA_VERSION}, "
+                f"got {None if version is None else version[0]}."
+            )
+        shadow = export_users(conn)
+    finally:
+        conn.close()
+
+    if shadow != legacy:
+        differing = sorted(
+            email
+            for email in set(legacy) | set(shadow)
+            if legacy.get(email) != shadow.get(email)
+        )
+        sample = ", ".join(differing[:10])
+        extra = "" if len(differing) <= 10 else f" (+{len(differing) - 10} more)"
+        raise ShadowStateError(
+            "Legacy/SQLite users.json parity failed for "
+            f"{len(differing)} user(s): {sample}{extra}"
+        )
+    return {"users": len(legacy)}
 
 
 def verify_user_data_parity(*, user_data_path: Path, db_path: Path) -> dict[str, int]:

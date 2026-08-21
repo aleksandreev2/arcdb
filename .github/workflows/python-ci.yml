@@ -43,10 +43,13 @@ jobs:
           tests/test_sqlite_state.py
           tests/test_safe_migration.py
           tests/test_runtime_state.py
+          tests/test_runtime_users.py
           tests/test_runtime_metadata.py
           tests/test_runtime_overlays.py
+          tests/test_dev_seed.py
           tests/runtime_collection_workflow.py
           tests/runtime_metadata_workflow.py
+          tests/runtime_auth_workflow.py
       - name: Verify required templates
         run: |
           test -f .runtime/source/templates/login.html
@@ -180,8 +183,10 @@ jobs:
           tests/test_sqlite_state.py
           tests/test_safe_migration.py
           tests/test_runtime_state.py
+          tests/test_runtime_users.py
           tests/test_runtime_metadata.py
           tests/test_runtime_overlays.py
+          tests/test_dev_seed.py
       - name: Checkpoint current local shadow before explicit migration test
         run: |
           PYTHONPATH=. .venv/bin/python - <<'PY'

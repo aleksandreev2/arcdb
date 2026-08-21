@@ -43,7 +43,7 @@ Normalized columns currently include:
 - password reset metadata;
 - original payload JSON.
 
-Users/auth are not yet runtime dual-written; that higher-risk domain is Phase 2D.
+Phase 2D runtime dual-write mirrors create/update/delete changes after `users.json` is durable. Registration, verification attempts/success, password-reset state and local dev-account maintenance retain the complete payload, including unknown fields. Password/token formats are unchanged.
 
 ### `user_state_users`
 
@@ -131,9 +131,9 @@ Stores original custom metadata payload. Phase 2C runtime dual-write upserts the
 
 Primary key: normalized email. Phase 2C replaces the normalized table after each successful allowlist file mutation. Comments, blank lines, case variants and duplicates are file-format details; the semantic allowlist is the unique lowercase email set. The original file remains preserved by migration backups.
 
-## 4. Runtime ownership during Phase 2C
+## 4. Runtime ownership after Phase 2D
 
-For covered `user_data.json`, `collections.json`, `user_uploads.json`, `custom_meta.json` and allowlist state:
+For `users.json`, `user_data.json`, `collections.json`, `user_uploads.json`, `custom_meta.json` and allowlist state represented by schema v3:
 
 ```text
 legacy JSON
@@ -141,7 +141,7 @@ legacy JSON
   - primary write happens first
 
 SQLite
-  - shadow write of changed user-state/upload/custom-metadata rows, affected collection containers and normalized allowlist
+  - shadow write of changed auth/user-state/upload/custom-metadata rows, affected collection containers and normalized allowlist
   - immediate per-row verification in local/CI when enabled
   - full-document plus normalized membership semantic parity check available
 ```

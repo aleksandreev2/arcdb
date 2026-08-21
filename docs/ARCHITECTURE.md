@@ -123,7 +123,7 @@ This is intentionally simple. OCI remains the heavy compute origin.
 
 ## 7. Storage ownership target
 
-Current transition status: Phase 2A per-novel user state, Phase 2B collection metadata/memberships and Phase 2C uploads/custom metadata/allowlist are dual-written with legacy files first and SQLite as a verified shadow. Reads still use legacy files. Users/auth are not yet runtime dual-written.
+Current transition status: Phase 2A per-novel user state, Phase 2B collection metadata/memberships, Phase 2C uploads/custom metadata/allowlist and Phase 2D users/auth are dual-written with legacy files first and SQLite as a verified shadow. Reads still use legacy files. Phase 3 will compare legacy and SQLite API reads behind `STATE_READ_BACKEND`; it must not make SQLite the default before parity is proven.
 
 ### SQLite WAL
 
