@@ -19,5 +19,12 @@ jobs:
           cache: pip
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
+      - name: Materialize source baseline
+        run: python scripts/materialize_baseline.py
       - name: Compile Python sources
-        run: python -m py_compile gallery_app.py scripts/dev_bootstrap.py scripts/dev_seed.py
+        run: python -m py_compile .runtime/source/gallery_app.py scripts/dev_bootstrap.py scripts/dev_seed.py scripts/materialize_baseline.py
+      - name: Verify required templates
+        run: |
+          test -f .runtime/source/templates/login.html
+          test -f .runtime/source/templates/gallery.html
+          test -f .runtime/source/templates/reader.html
