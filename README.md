@@ -119,6 +119,17 @@ STATE_READ_SHADOW_REPORT_EVERY=1000
 
 The first successful comparison per domain and then every configured interval are logged as payload-free events; mismatches and SQLite errors are always logged. Strict mode is enabled in CI so any divergence fails visibly. Both explicit backends and runtime shadow comparison are exercised against identical seeded API flows in CI. SQLite is not the production default or source of truth; production enablement still requires live reconciliation, bounded observation and a separate canary.
 
+Phase 3C makes the observation and rollback gates reproducible. Audit the private log from exactly one bounded shadow-comparison process into a new sanitized report:
+
+```bash
+python scripts/verify_read_shadow_observation.py \
+  --log /explicit/private/shadow-process.log \
+  --minimum-reported-matches 1 \
+  --report /new/private/path/shadow-observation.json
+```
+
+The audit requires increasing successful counters for all six schema-v3 domains and fails on mismatch, SQLite error, malformed/unknown events or ambiguous process-counter resets. The report contains only domain counters and decisions; the raw application log must still be treated as private. CI rehearses the next step by running the authenticated API suite through SQLite reads, replacing that canary process with a legacy-only process on the same port and repeating parity. This proves the repository rollback mechanism, not a production rollout; primary-read authorization remains false.
+
 Before any production observation or canary, run the read-only preflight with explicit discovered paths:
 
 ```bash

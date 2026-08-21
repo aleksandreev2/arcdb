@@ -30,6 +30,7 @@ jobs:
           arcdb/storage/safe_migration.py
           arcdb/storage/runtime_state.py
           arcdb/storage/runtime_reads.py
+          arcdb/storage/read_observation.py
           arcdb/storage/readiness.py
           arcdb/storage/state_parity.py
           scripts/dev_bootstrap.py
@@ -40,6 +41,7 @@ jobs:
           scripts/export_sqlite_to_legacy.py
           scripts/verify_state_parity.py
           scripts/verify_read_cutover_readiness.py
+          scripts/verify_read_shadow_observation.py
           scripts/runtime_overlays.py
           scripts/materialize_baseline.py
           tests/make_seed_fixtures.py
@@ -47,6 +49,7 @@ jobs:
           tests/test_safe_migration.py
           tests/test_runtime_state.py
           tests/test_runtime_reads.py
+          tests/test_read_observation.py
           tests/test_readiness.py
           tests/test_runtime_users.py
           tests/test_runtime_metadata.py
@@ -190,6 +193,7 @@ jobs:
           tests/test_safe_migration.py
           tests/test_runtime_state.py
           tests/test_runtime_reads.py
+          tests/test_read_observation.py
           tests/test_readiness.py
           tests/test_runtime_users.py
           tests/test_runtime_metadata.py

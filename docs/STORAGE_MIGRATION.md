@@ -315,7 +315,7 @@ Login/logout themselves only read the user record and mutate Flask session state
 
 ## Phase 3 — SQLite read comparison/cutover
 
-Status: feature-flagged backends and legacy-serving runtime shadow observation implemented; production execution/cutover pending.
+Status: feature-flagged backends, legacy-serving runtime shadow observation and canary rollback rehearsal implemented; production execution/cutover pending.
 
 - `STATE_READ_BACKEND=legacy` is the default;
 - `STATE_READ_BACKEND=sqlite` opens the verified shadow read-only and checks schema v3;
@@ -332,6 +332,10 @@ Status: feature-flagged backends and legacy-serving runtime shadow observation i
 - `scripts/verify_read_cutover_readiness.py` requires explicit metadata/SQLite paths and performs a read-only single-snapshot database health/full-parity check;
 - the preflight recursively fingerprints legacy metadata before and after verification, reports only aggregate counts/checks and refuses to overwrite an existing report;
 - a passing preflight report keeps both bounded-canary and primary-read authorization false pending operator review and live observation.
+- `scripts/verify_read_shadow_observation.py` audits the payload-free events from exactly one bounded process log;
+- the audit fails on mismatch/error, malformed or unknown events, non-increasing process counters and incomplete six-domain coverage;
+- its overwrite-refusing report omits input paths, identities and payloads and keeps primary-read authorization false;
+- CI explicitly replaces an SQLite-read canary process with a legacy-only process on the same port and repeats real authenticated endpoint parity.
 
 Production reconciliation, actual observation and primary-read promotion remain pending. Retain legacy files and rollback controls throughout. Shadow comparison is valid only with `STATE_READ_BACKEND=legacy`; enabling it alongside `sqlite` fails closed to prevent an ambiguous rollout configuration.
 
@@ -345,6 +349,17 @@ python scripts/verify_read_cutover_readiness.py \
 ```
 
 Run it while writers are quiesced or during a controlled quiet window. A `source_changed` failure means the result is not a valid cutover checkpoint; retry only after the write source is stable. Review `unknown_files` against the live inventory before enabling runtime shadow observation.
+
+After a bounded shadow-comparison process has handled the intended internal traffic, stop that process so its counters have an unambiguous boundary and audit its private log:
+
+```bash
+python scripts/verify_read_shadow_observation.py \
+  --log /explicit/private/shadow-process.log \
+  --minimum-reported-matches 1 \
+  --report /new/private/audit/shadow-observation.json
+```
+
+Keep the raw log private. A passing audit proves only that the supplied single-process boundary contained increasing match events for every domain and no reported mismatch/error. It does not prove traffic representativeness and does not authorize primary reads. The repository's CI rollback drill proves the mechanics on fixtures; the bounded production canary and rollback must still be executed separately after live reconciliation.
 
 Do not combine a new dual-write domain and read-source cutover in one change.
 

@@ -307,3 +307,21 @@ Decision:
 Reasoning:
 
 Local and CI parity cannot prove that production paths, live-only files or live source match the repository assumptions. A read-only explicit-path gate produces shareable evidence without mutating production or leaking auth state, while its deliberately non-authorizing decision fields prevent an automated report from being mistaken for approval to change the read source.
+
+## ADR-020 — Audit bounded shadow evidence and rehearse read rollback before live canary
+
+Status: accepted for Phase 3C production preparation.
+
+Decision:
+
+- treat one stopped process log as the observation boundary so process-local counters cannot be silently combined across restarts;
+- parse only the defined payload-free shadow event format and fail closed on malformed events, unknown domains, mismatch/error events or non-increasing counters;
+- require reported successful matches for every schema-v3 read domain;
+- create sanitized evidence only at a new path and exclude log paths, identities and payloads;
+- keep primary-read authorization false in generated evidence;
+- exercise an SQLite-read process and then replace it with a legacy-only process on the same canary port in CI, repeating real authenticated endpoint parity after rollback;
+- continue to require separate live reconciliation, bounded production observation, canary and rollback execution.
+
+Reasoning:
+
+Manual grep checks prove neither a complete observation boundary nor monotonic per-process evidence, while an unstructured CI backend comparison does not demonstrate the operational rollback sequence. A strict bounded-log audit and same-port process replacement make both gates reproducible without expanding the trust assigned to fixture data or claiming unavailable production access.

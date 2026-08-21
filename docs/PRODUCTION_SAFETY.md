@@ -187,6 +187,10 @@ Phase 3 adds `STATE_READ_BACKEND=legacy|sqlite`, but keeps `legacy` as the defau
 
 The repository also provides `scripts/verify_read_cutover_readiness.py` as a read-only gate. It requires explicit live paths, requires the three core legacy documents, verifies schema/quick/integrity/foreign-key health plus complete schema-v3 parity in one SQLite snapshot, and proves the recursively discovered legacy sources did not change during the run. Its optional report omits paths, identities and payloads, refuses overwrite and deliberately sets canary/primary authorization to false. Passing this tool is evidence for operator review, not permission to cut over.
 
+`scripts/verify_read_shadow_observation.py` is the next evidence gate. Give it the private UTF-8 log from exactly one bounded shadow-comparison process after that process is stopped. It accepts only the defined payload-free event format, requires increasing successful counters for all six domains and fails on mismatch/error, malformed/unknown events, counter resets or incomplete coverage. Its new-file-only report omits the input path, identities and payloads and leaves primary-read authorization false. The raw application log is not sanitized by this tool and must remain private.
+
+CI separately rehearses rollback by serving real authenticated requests from an SQLite-read process, stopping it, starting a legacy-only process on the same canary port and repeating endpoint parity. This validates code/config mechanics against fixtures. It is not a substitute for a live canary, live rollback drill or operator review.
+
 Recommended order:
 
 1. SQLite shadow DB exists and verifies successfully.
@@ -197,7 +201,7 @@ Recommended order:
 6. Observe a stable period.
 7. Run the explicit-path readiness preflight in a controlled quiet window and retain its private report.
 8. Reconcile every unknown-file count and any live source/config differences; a passing report alone is not authorization.
-9. Keep `STATE_READ_BACKEND=legacy`, enable shadow comparison for bounded internal traffic and observe every domain.
+9. Keep `STATE_READ_BACKEND=legacy`, enable shadow comparison for one bounded internal process, stop it at the boundary and validate its log with `scripts/verify_read_shadow_observation.py`.
 10. Investigate every mismatch/error; do not continue while any divergence is unexplained.
 11. Disable shadow comparison and prove that legacy-only serving is an immediate rollback.
 12. Enable `STATE_READ_BACKEND=sqlite` only for a separate bounded internal canary.
