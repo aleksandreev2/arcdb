@@ -2,6 +2,21 @@
 
 ArchiveDB web application. This repository currently uses the latest source archive available to us as the development baseline; the Oracle instance may contain newer production-only changes and will be reconciled later without overwriting server data blindly.
 
+## Start here for AI / new contributors
+
+Read these before architecture/storage changes:
+
+1. `AGENTS.md` — mandatory project/safety rules.
+2. `docs/PROJECT_CONTEXT.md` — concise project handoff/current state.
+3. `docs/ARCHITECTURE.md` — confirmed/current/target architecture.
+4. `docs/DATA_MODEL.md` — current and target data ownership.
+5. `docs/STORAGE_MIGRATION.md` — staged JSON -> SQLite plan.
+6. `docs/PRODUCTION_SAFETY.md` — backup/cutover/rollback invariants.
+7. `docs/ROADMAP.md` — ordered implementation plan.
+8. `docs/DECISIONS.md` — architectural decisions and rationale.
+
+Material architectural changes should update the relevant docs in the same PR.
+
 ## Windows: one-click local start
 
 Requirements: **Python 3.11+** and Git for Windows.
@@ -12,16 +27,19 @@ cd arcdb
 start.bat
 ```
 
-`start.bat` delegates setup to `scripts/dev_bootstrap.py`. On the first run it automatically:
+`start.bat` delegates setup to `scripts/dev_bootstrap.py`. It automatically:
 
-1. creates `.venv`;
-2. installs packages from `requirements.txt`;
+1. creates `.venv` when needed;
+2. installs packages from `requirements.txt` when requirements change;
 3. creates a local `.env` from `.env.local.example`;
 4. generates a random local Flask secret;
 5. creates the local `data/` tree;
 6. verifies and reconstructs the checked-in development baseline into `.runtime/source/`;
-7. creates a local development login;
-8. starts ArchiveDB at `http://127.0.0.1:5004/login` and opens it in the browser.
+7. creates/maintains the local development login;
+8. if the local library is empty and EPUB fixtures exist in `dev-fixtures/inbox`, seeds once;
+9. starts ArchiveDB at `http://127.0.0.1:5004/login` and opens it in the browser.
+
+Normal startup does **not** reset an already populated local library.
 
 Default local login:
 
@@ -32,9 +50,9 @@ arcdb-dev-123
 
 The local account exists only inside ignored `data/` files. Change `LOCAL_DEV_EMAIL` / `LOCAL_DEV_PASSWORD` in `.env` if desired.
 
-### Seed a populated development library
+### Explicitly rebuild development data
 
-Library/data seeding is **never run by `start.bat`**. It only happens when you explicitly run:
+To intentionally reset/rebuild the local fixture library:
 
 ```text
 seed-dev.bat
@@ -60,25 +78,13 @@ seed-dev.bat "D:\path\to\Downloads.zip"
 
 `seed-dev.bat` first runs `scripts/dev_bootstrap.py --setup-only`, so it automatically creates the virtual environment and installs/updates dependencies without starting Flask. It then resets **only local dev data**, scans the EPUB fixtures and creates a production-like local library.
 
-The supplied fixture set currently seeds:
+The fixture mapping seeds RAW/translated/RAW+translated cases, local users/progress/collections/community data and writes `data/dev-seed-report.json`. PDF and `.file` entries are ignored; unused alternate EPUBs are reported rather than added as duplicate cards.
 
-- RAW EPUBs into `data/batched_epubs/`;
-- a RAW + translated pair for `S급 헌터들의 가이드가 되었다` / `Я стал куратором охотников S-ранга`;
-- `Регрессор Академии яндере` as a large translated-reader fixture;
-- `Мои сексуальные университетские подружки` as another translated-reader fixture;
-- RAW-only Korean novels for filtering/download testing;
-- local metadata, users, reading progress, collections and community chat data;
-- `data/dev-seed-report.json` with EPUB metadata, hashes, counts, validation issues and unused alternate EPUBs.
-
-PDF and `.file` entries in a fixture ZIP are ignored. Alternative EPUB versions that are not selected by `dev-fixtures/seed-manifest.json` remain visible in the seed report as test cases but are not added as duplicate library cards.
-
-For safety the seeder refuses to run unless all of these are true:
+Seeder safety requirements:
 
 - `ARCHIVEDB_LOCAL_DEV=1`;
-- `HOST` is loopback-only;
-- every writable ArchiveDB data path resolves inside this checkout's `data/` directory.
-
-Before replacing an existing seed it backs up the small JSON/CSV state into `.dev-backups/` and keeps the three most recent backups. Large derived EPUB/chapter folders are regenerated instead of duplicated in backups.
+- loopback-only host;
+- writable ArchiveDB dev paths inside this checkout's `data/` directory.
 
 ### Subsequent updates
 
@@ -88,7 +94,30 @@ Double-click:
 update-and-start.bat
 ```
 
-It performs `git pull --ff-only` and then launches the same bootstrap. Python packages are reinstalled **only when `requirements.txt` changes**.
+It performs `git pull --ff-only` and then launches `start.bat`.
+
+## SQLite shadow migration
+
+ArchiveDB is migrating hot mutable state away from whole-file JSON rewrites. The current repository contains a SQLite WAL shadow schema/importer, but the Flask baseline has **not yet been switched to SQLite as production source of truth**.
+
+Local safe migration test:
+
+```bat
+.venv\Scripts\python.exe scripts\migrate_state_to_sqlite.py --verify
+```
+
+The migration is candidate-first and non-destructive:
+
+```text
+legacy metadata/CSV state
+  -> verified timestamped snapshot + SHA-256 manifest
+  -> separate candidate SQLite
+  -> round-trip + quick_check + integrity_check + foreign_key_check
+  -> source hash re-check
+  -> candidate promotion
+```
+
+Legacy files are not modified/deleted by the migration. If an SQLite target already exists it is preserved before candidate promotion. See `docs/PRODUCTION_SAFETY.md` before any production use.
 
 ## Local data
 
@@ -96,6 +125,8 @@ Development data stays outside Git:
 
 ```text
 data/
+├── arcdb.sqlite3
+├── migration-backups/
 ├── metadata/
 ├── output/
 ├── structured_output/
@@ -113,7 +144,7 @@ Telegram is disabled locally by default (`ARCHIVEDB_NO_TELEGRAM=1`). SMTP is opt
 
 ```text
 Browser
-  -> Cloudflare Worker / Cloudflare Tunnel
+  -> Cloudflare edge / likely Tunnel
   -> Oracle Cloud Infrastructure Ampere instance
      - ARM
      - 4 OCPU
@@ -128,21 +159,24 @@ Production credentials, Telegram sessions, user databases, EPUBs, extracted chap
 ## Repository layout
 
 ```text
+AGENTS.md                       AI/contributor rules and handoff entrypoint
+arcdb/storage/                  SQLite/storage migration foundation
 baseline/                       temporary checked-in compressed source baseline
 dev-fixtures/seed-manifest.json reproducible local library fixture mapping
 dev-fixtures/inbox/             ignored location for Downloads.zip / EPUBs
-seed-dev.bat                    explicit Windows local-data seed launcher
+seed-dev.bat                    explicit Windows local-data rebuild launcher
 scripts/materialize_baseline.py verifies + extracts baseline to `.runtime/source/`
 scripts/dev_bootstrap.py        local environment/dependency/bootstrap launcher
 scripts/dev_seed.py             local-only login seed
 scripts/dev_seed_library.py     EPUB scanner + local library/state seeder
+scripts/migrate_state_to_sqlite.py safe legacy-state -> SQLite migration
 scripts/oracle_inventory.sh     read-only production inventory helper
-tests/make_seed_fixtures.py     tiny generated EPUB fixtures used by CI
-docs/ARCHITECTURE.md            architecture notes
+tests/                          bootstrap/seed/storage safety coverage
+docs/                           architecture, data, safety, roadmap and decisions
 ```
 
 The baseline bundle is temporary plumbing for the initial archive import. As the application is refactored, source files will move into a normal directly tracked package layout.
 
 ## Production caution
 
-Do not deploy this branch to Oracle simply by replacing the live directory. Before production deployment we will compare this baseline with the live instance (or a sanitized source snapshot supplied by the owner), preserve production paths/data, create a backup and only then build the deployment/rollback flow.
+Do not deploy this repository over Oracle simply because local CI is green. Before production deployment, reconcile this baseline with the live instance (or a sanitized source snapshot), preserve production paths/data, create verified backups and follow the documented rollback-capable migration protocol.
