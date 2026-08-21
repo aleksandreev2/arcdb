@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-OVERLAY_VERSION = "collections-dual-write-v1"
+OVERLAY_VERSION = "metadata-dual-write-v1"
 
 
 def overlay_digest() -> str:
@@ -79,6 +79,92 @@ def apply_gallery_app_overlay(path: Path) -> None:
 '''
     text = _replace_once(text, old_mutator, new_mutator, "mutate_user_data shadow hook")
 
+    old_metadata_helpers = '''def load_custom_meta():
+    return read_json_file(CUSTOM_META_PATH, {})
+
+def save_custom_meta_entry(filename, entry):
+    with _CUSTOM_META_LOCK:
+        custom_meta = load_custom_meta()
+        custom_meta[filename] = entry
+        write_json_atomic(CUSTOM_META_PATH, custom_meta, indent=4, ensure_ascii=False)
+
+# ===================== User-uploaded novels persistence =====================
+def _load_user_uploads_unlocked():
+    data = read_json_file(USER_UPLOADS_PATH, {})
+    return data if isinstance(data, dict) else {}
+
+def load_user_uploads():
+    with _USER_UPLOADS_LOCK:
+        return _load_user_uploads_unlocked()
+
+def mutate_user_uploads(mutator):
+    with _USER_UPLOADS_LOCK:
+        data = _load_user_uploads_unlocked()
+        result = mutator(data)
+        write_json_atomic(
+            USER_UPLOADS_PATH,
+            data,
+            ensure_ascii=False,
+            indent=2,
+        )
+        return result
+'''
+    new_metadata_helpers = '''def load_custom_meta():
+    return read_json_file(CUSTOM_META_PATH, {})
+
+def save_custom_meta_entry(filename, entry):
+    with _CUSTOM_META_LOCK:
+        custom_meta = load_custom_meta()
+        custom_meta[filename] = entry
+        write_json_atomic(CUSTOM_META_PATH, custom_meta, indent=4, ensure_ascii=False)
+        try:
+            from arcdb.storage.runtime_state import mirror_custom_metadata_entry
+            mirror_custom_metadata_entry(filename, entry, reason="custom_metadata")
+        except Exception as exc:
+            print(f"[STATE-DUAL-WRITE][ERROR] custom_metadata: {exc}")
+            if os.environ.get("STATE_DUAL_WRITE_STRICT", "0") == "1":
+                raise
+
+# ===================== User-uploaded novels persistence =====================
+def _load_user_uploads_unlocked():
+    data = read_json_file(USER_UPLOADS_PATH, {})
+    return data if isinstance(data, dict) else {}
+
+def load_user_uploads():
+    with _USER_UPLOADS_LOCK:
+        return _load_user_uploads_unlocked()
+
+def mutate_user_uploads(mutator, shadow_reason="user_uploads"):
+    with _USER_UPLOADS_LOCK:
+        data = _load_user_uploads_unlocked()
+        before_uploads = json.loads(json.dumps(data))
+        result = mutator(data)
+        write_json_atomic(
+            USER_UPLOADS_PATH,
+            data,
+            ensure_ascii=False,
+            indent=2,
+        )
+        try:
+            from arcdb.storage.runtime_state import mirror_upload_changes
+            mirror_upload_changes(before_uploads, data, reason=shadow_reason)
+        except Exception as exc:
+            print(f"[STATE-DUAL-WRITE][ERROR] {shadow_reason}: {exc}")
+            if os.environ.get("STATE_DUAL_WRITE_STRICT", "0") == "1":
+                failure = RuntimeError(
+                    f"SQLite upload shadow failed after the legacy write: {exc}"
+                )
+                failure.arcdb_legacy_write_succeeded = True
+                raise failure from exc
+        return result
+'''
+    text = _replace_once(
+        text,
+        old_metadata_helpers,
+        new_metadata_helpers,
+        "custom metadata and uploads shadow hooks",
+    )
+
     old_collection_helpers = '''def load_collections():
     with _COLLECTIONS_LOCK:
         return read_json_file(COLLECTIONS_PATH, {})
@@ -115,6 +201,55 @@ def save_collections(data, shadow_email=None, shadow_reason="collections"):
         old_collection_helpers,
         new_collection_helpers,
         "collection metadata shadow hook",
+    )
+
+    old_allowlist_lock = '''_ALLOWLIST_WRITE_LOCK = threading.Lock()
+
+def remove_email_from_allowlist(email):'''
+    new_allowlist_lock = '''_ALLOWLIST_WRITE_LOCK = threading.Lock()
+
+def _mirror_allowlist_shadow(reason):
+    try:
+        from arcdb.storage.runtime_state import mirror_allowed_emails
+        with _ALLOWLIST_WRITE_LOCK:
+            mirror_allowed_emails(get_allowed_emails(), reason=reason)
+    except Exception as exc:
+        print(f"[STATE-DUAL-WRITE][ERROR] {reason}: {exc}")
+        if os.environ.get("STATE_DUAL_WRITE_STRICT", "0") == "1":
+            raise
+
+def remove_email_from_allowlist(email):'''
+    text = _replace_once(
+        text,
+        old_allowlist_lock,
+        new_allowlist_lock,
+        "allowlist shadow helper",
+    )
+    text = _replace_in_section(
+        text,
+        start="def remove_email_from_allowlist(email):",
+        end="def extract_emails_from_text(text):",
+        old='''    with _ALLOWED_EMAILS_LOCK:
+        _allowed_emails_cache["mtime"] = None
+    return True''',
+        new='''    with _ALLOWED_EMAILS_LOCK:
+        _allowed_emails_cache["mtime"] = None
+    _mirror_allowlist_shadow("allowlist_remove")
+    return True''',
+        label="allowlist remove",
+    )
+    text = _replace_in_section(
+        text,
+        start="def add_emails_to_allowlist(emails):",
+        end="_IP_EMAIL_LOCK = threading.Lock()",
+        old='''    with _ALLOWED_EMAILS_LOCK:
+        _allowed_emails_cache["mtime"] = None
+    return added''',
+        new='''    with _ALLOWED_EMAILS_LOCK:
+        _allowed_emails_cache["mtime"] = None
+    _mirror_allowlist_shadow("allowlist_add")
+    return added''',
+        label="allowlist add",
     )
 
     text = _replace_in_section(
@@ -265,6 +400,50 @@ def save_collections(data, shadow_email=None, shadow_reason="collections"):
         old='mutate_user_data(m)',
         new='mutate_user_data(m, shadow_email=email, shadow_reason="community_import_memberships")',
         label="community import memberships",
+    )
+    text = _replace_in_section(
+        text,
+        start='@app.route("/api/upload_novel", methods=["POST"])',
+        end='@app.route("/api/upload/<upload_id>/asset/cover")',
+        old='mutate_user_uploads(save_record)',
+        new='mutate_user_uploads(save_record, shadow_reason="upload_create")',
+        label="upload create",
+    )
+    text = _replace_in_section(
+        text,
+        start='@app.route("/api/upload_novel", methods=["POST"])',
+        end='@app.route("/api/upload/<upload_id>/asset/cover")',
+        old='''    except Exception as exc:
+        print(f"[WARN] Novel upload failed for {_log_safe(user_email)}: {exc}")
+        shutil.rmtree(temporary_extract_dir, ignore_errors=True)
+        shutil.rmtree(originals_dir, ignore_errors=True)''',
+        new='''    except Exception as exc:
+        print(f"[WARN] Novel upload failed for {_log_safe(user_email)}: {exc}")
+        if getattr(exc, "arcdb_legacy_write_succeeded", False):
+            return json_error(
+                "The upload was saved, but local shadow verification failed. "
+                "Restart local ArchiveDB to rebuild the shadow before retrying.",
+                500,
+            )
+        shutil.rmtree(temporary_extract_dir, ignore_errors=True)
+        shutil.rmtree(originals_dir, ignore_errors=True)''',
+        label="upload shadow failure preserves files",
+    )
+    text = _replace_in_section(
+        text,
+        start='@app.route("/admin/access", methods=["GET", "POST"])',
+        end='@app.route("/api/read/<novel_id>/chapter/<path:chap_path>")',
+        old='mutate_user_uploads(approve_record)',
+        new='mutate_user_uploads(approve_record, shadow_reason="upload_approve")',
+        label="upload approve",
+    )
+    text = _replace_in_section(
+        text,
+        start='@app.route("/admin/access", methods=["GET", "POST"])',
+        end='@app.route("/api/read/<novel_id>/chapter/<path:chap_path>")',
+        old='mutate_user_uploads(remove_record)',
+        new='mutate_user_uploads(remove_record, shadow_reason="upload_reject")',
+        label="upload reject",
     )
 
     path.write_text(text, encoding="utf-8")

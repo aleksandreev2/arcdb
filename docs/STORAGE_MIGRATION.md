@@ -157,7 +157,7 @@ Local bootstrap has one additional convenience path: when a **local-development-
 
 ## Phase 2 — runtime dual-write
 
-Status: in progress. Phase 2A and Phase 2B are implemented.
+Status: in progress. Phase 2A, Phase 2B and Phase 2C are implemented.
 
 ### Write order
 
@@ -238,6 +238,8 @@ It opens SQLite read-only and verifies:
 - the entire semantic `user_data.json` document;
 - every normalized `collection_items` membership;
 - the entire semantic `collections.json` document;
+- the entire `user_uploads.json` and `custom_meta.json` documents;
+- the normalized unique lowercase allowlist (comments/blank lines are not email entries);
 - empty user-state and collection containers;
 - raw per-record and collection payloads/order.
 
@@ -274,16 +276,26 @@ Covered:
 
 ### Phase 2C — uploads/custom metadata/allowlist
 
-Next. Mirror:
+Status: implemented and covered by unit plus real Flask API CI.
 
-- upload metadata/approval state;
-- custom metadata;
-- allowlist changes;
-- corresponding admin mutations.
+Covered:
+
+- `/api/upload_novel` pending upload creation;
+- admin upload approval/update;
+- admin upload rejection/deletion;
+- repeated approve/reject behavior;
+- `/api/edit` custom metadata upserts;
+- admin allowlist add/deduplicate and revoke;
+- complete payload preservation for uploads/custom metadata;
+- full `user_uploads.json`, `custom_meta.json` and semantic allowlist parity.
+
+If strict local upload shadow verification fails after `user_uploads.json` is durable, the request fails loudly but the already-saved EPUB files are retained. This avoids leaving the authoritative upload record pointing at cleanup-deleted files; local startup can rebuild the shadow from the preserved legacy state.
+
+Allowlist comments and blank lines remain preserved in the legacy file and migration snapshot but are not rows in `allowed_emails`. Runtime and migration both treat the domain as a unique lowercase email set.
 
 ### Phase 2D — users/auth
 
-Migrate auth last within the write phase with dedicated registration/login/verification/reset tests.
+Next. Migrate auth last within the write phase with dedicated registration/login/verification/reset tests.
 
 ## Phase 3 — SQLite read comparison/cutover
 

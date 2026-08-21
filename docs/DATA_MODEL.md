@@ -119,21 +119,21 @@ Primary key: upload id.
 
 Normalized fields include uploader email, approval flag/date/title plus original payload.
 
-Runtime dual-write planned for Phase 2C.
+Phase 2C runtime dual-write covers create, approval/update and rejection/delete mutations. Every row retains the complete payload JSON, including unknown fields.
 
 ### `custom_metadata`
 
 Primary key: filename.
 
-Stores original custom metadata payload. Runtime dual-write planned for Phase 2C.
+Stores original custom metadata payload. Phase 2C runtime dual-write upserts the affected entry after `custom_meta.json` is durable.
 
 ### `allowed_emails`
 
-Primary key: normalized email. Runtime dual-write planned for Phase 2C.
+Primary key: normalized email. Phase 2C replaces the normalized table after each successful allowlist file mutation. Comments, blank lines, case variants and duplicates are file-format details; the semantic allowlist is the unique lowercase email set. The original file remains preserved by migration backups.
 
-## 4. Runtime ownership during Phase 2B
+## 4. Runtime ownership during Phase 2C
 
-For `user_data.json` and `collections.json` state:
+For covered `user_data.json`, `collections.json`, `user_uploads.json`, `custom_meta.json` and allowlist state:
 
 ```text
 legacy JSON
@@ -141,7 +141,7 @@ legacy JSON
   - primary write happens first
 
 SQLite
-  - shadow write of changed user-state rows and affected collection containers
+  - shadow write of changed user-state/upload/custom-metadata rows, affected collection containers and normalized allowlist
   - immediate per-row verification in local/CI when enabled
   - full-document plus normalized membership semantic parity check available
 ```

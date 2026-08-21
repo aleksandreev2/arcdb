@@ -95,12 +95,13 @@ Implemented in repository:
 - SQLite -> legacy reverse export;
 - runtime Phase 2A dual-write for hot per-novel user state;
 - runtime Phase 2B dual-write for collection metadata and memberships;
-- full user-state, collection metadata and normalized membership parity checker;
+- runtime Phase 2C dual-write for uploads, custom metadata and allowlist;
+- full user-state, collection metadata, normalized membership and Phase 2C metadata parity checker;
 - real route-level dual-write CI.
 
 SQLite is **not** the read source yet.
 
-Current write flow for covered user-state mutations:
+Current write flow for covered mutations:
 
 ```text
 request
@@ -109,7 +110,7 @@ request
   -> local/CI immediate verification
 ```
 
-Covered Phase 2A/2B mutations:
+Covered Phase 2A/2B/2C mutations:
 
 - progress;
 - status;
@@ -117,13 +118,16 @@ Covered Phase 2A/2B mutations:
 - hidden state;
 - download counters;
 - bulk user-state removal;
-- embedded collection membership on affected records.
+- embedded collection membership on affected records;
 - collection create/rename/delete;
 - collection assign/unassign and repeated operations;
 - delete membership cleanup;
-- community collection import.
+- community collection import;
+- upload submission, approval/update and rejection/delete;
+- custom metadata updates;
+- allowlist add/deduplicate/revoke.
 
-Uploads/custom metadata/allowlist and users/auth are still pending dual-write.
+Users/auth are still pending dual-write and remain Phase 2D.
 
 ## Non-negotiable migration rule
 
@@ -200,17 +204,16 @@ Avoid a full rewrite. Keep Flask and preserve API/UI behavior while extracting r
 
 ## Current next ordered work
 
-1. Dual-write uploads/custom metadata/allowlist.
-2. Dual-write users/auth with dedicated auth tests.
-3. Add SQLite read-source feature flag and comprehensive API parity tests.
-4. Make SQLite primary read source only after stable observation.
-5. Stop JSON writes domain-by-domain; preserve legacy/export rollback paths.
-6. Optimize upload fsync and EPUB streaming.
-7. Move packaging to async jobs.
-8. Split Telethon into its own service.
-9. Build persistent novel/chapter index.
-10. Split static frontend assets.
-11. Introduce R2 selectively for immutable large objects.
+1. Dual-write users/auth with dedicated auth tests.
+2. Add SQLite read-source feature flag and comprehensive API parity tests.
+3. Make SQLite primary read source only after stable observation.
+4. Stop JSON writes domain-by-domain; preserve legacy/export rollback paths.
+5. Optimize upload fsync and EPUB streaming.
+6. Move packaging to async jobs.
+7. Split Telethon into its own service.
+8. Build persistent novel/chapter index.
+9. Split static frontend assets.
+10. Introduce R2 selectively for immutable large objects.
 
 ## Where to read next
 
