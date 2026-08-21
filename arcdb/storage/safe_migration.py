@@ -62,7 +62,12 @@ def snapshot_fingerprints(paths: Iterable[Path]) -> dict[str, dict[str, Any]]:
     return {str(path.resolve()): file_fingerprint(path.resolve()) for path in paths}
 
 
-def assert_sources_unchanged(before: dict[str, dict[str, Any]]) -> None:
+def assert_sources_unchanged(
+    before: dict[str, dict[str, Any]],
+    *,
+    meta_dir: Path,
+    explicit_files: Iterable[Path],
+) -> None:
     changed: list[str] = []
     for raw_path, expected in before.items():
         current = file_fingerprint(Path(raw_path))
@@ -70,6 +75,15 @@ def assert_sources_unchanged(before: dict[str, dict[str, Any]]) -> None:
         comparable_current = {k: current.get(k) for k in ("exists", "size", "sha256")}
         if comparable_current != comparable_expected:
             changed.append(raw_path)
+
+    expected_existing = {path for path, fp in before.items() if fp.get("exists")}
+    current_existing = {str(path.resolve()) for path in discover_snapshot_files(meta_dir, explicit_files)}
+    if current_existing != expected_existing:
+        added = sorted(current_existing - expected_existing)
+        removed = sorted(expected_existing - current_existing)
+        changed.extend([f"added:{p}" for p in added])
+        changed.extend([f"removed:{p}" for p in removed])
+
     if changed:
         raise RuntimeError(
             "Legacy source state changed during migration; candidate will not be promoted: "
@@ -87,8 +101,12 @@ def create_verified_snapshot(
     files_dir = backup_dir / "legacy-files"
     files_dir.mkdir(parents=True, exist_ok=False)
 
-    source_files = discover_snapshot_files(meta_dir, explicit_files)
-    before = snapshot_fingerprints(source_files)
+    explicit = [path.resolve() for path in explicit_files]
+    source_files = discover_snapshot_files(meta_dir, explicit)
+    tracked_paths = {str(path.resolve()): path.resolve() for path in source_files}
+    for path in explicit:
+        tracked_paths.setdefault(str(path), path)
+    before = snapshot_fingerprints(tracked_paths.values())
     entries: list[dict[str, Any]] = []
 
     meta_root = meta_dir.resolve()
@@ -120,6 +138,7 @@ def create_verified_snapshot(
         "created_at_unix": time.time(),
         "metadata_root": str(meta_root),
         "files": entries,
+        "tracked_sources": before,
     }
     (backup_dir / "manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
@@ -193,7 +212,6 @@ def build_verified_candidate(
     finally:
         conn.close()
 
-    # Reopen the on-disk candidate after checkpoint/close and verify it again.
     conn = connect_db(candidate_path)
     try:
         verify_roundtrip(conn, docs)
@@ -204,22 +222,30 @@ def build_verified_candidate(
     return counts, checks
 
 
+def _active_sidecars(db_path: Path) -> list[Path]:
+    return [
+        sidecar
+        for sidecar in (Path(str(db_path) + "-wal"), Path(str(db_path) + "-shm"))
+        if sidecar.exists()
+    ]
+
+
 def preserve_existing_database(db_path: Path, backup_dir: Path) -> Path | None:
     if not db_path.exists():
         return None
+    active = _active_sidecars(db_path)
+    if active:
+        raise RuntimeError(
+            "Refusing to replace an SQLite target with WAL/SHM sidecars present. "
+            "Stop users of the database and checkpoint/close it first: "
+            + ", ".join(str(path) for path in active)
+        )
     previous_dir = backup_dir / "previous-sqlite"
     previous_dir.mkdir(parents=True, exist_ok=True)
     backup = previous_dir / db_path.name
     shutil.copy2(db_path, backup)
     if sha256_file(db_path) != sha256_file(backup):
         raise RuntimeError("Existing SQLite backup checksum mismatch")
-    for suffix in ("-wal", "-shm"):
-        sidecar = Path(str(db_path) + suffix)
-        if sidecar.exists():
-            sidecar_backup = previous_dir / (db_path.name + suffix)
-            shutil.copy2(sidecar, sidecar_backup)
-            if sha256_file(sidecar) != sha256_file(sidecar_backup):
-                raise RuntimeError(f"Existing SQLite sidecar backup mismatch: {sidecar}")
     return backup
 
 
@@ -229,10 +255,6 @@ def promote_candidate(candidate_path: Path, db_path: Path, backup_dir: Path) -> 
 
     # os.replace is atomic when candidate and target are on the same filesystem.
     os.replace(candidate_path, db_path)
-    for suffix in ("-wal", "-shm"):
-        stale = Path(str(candidate_path) + suffix)
-        if stale.exists():
-            raise RuntimeError(f"Unexpected candidate sidecar remained after checkpoint: {stale}")
 
     conn = connect_db(db_path)
     try:
