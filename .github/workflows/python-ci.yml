@@ -22,7 +22,14 @@ jobs:
       - name: Materialize source baseline
         run: python scripts/materialize_baseline.py
       - name: Compile Python sources
-        run: python -m py_compile .runtime/source/gallery_app.py scripts/dev_bootstrap.py scripts/dev_seed.py scripts/materialize_baseline.py
+        run: >-
+          python -m py_compile
+          .runtime/source/gallery_app.py
+          scripts/dev_bootstrap.py
+          scripts/dev_seed.py
+          scripts/dev_seed_library.py
+          scripts/materialize_baseline.py
+          tests/make_seed_fixtures.py
       - name: Verify required templates
         run: |
           test -f .runtime/source/templates/login.html
@@ -64,3 +71,74 @@ jobs:
           echo "Server did not become ready in time."
           cat server.log
           exit 1
+
+  dev-seed-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Prepare local environment without starting Flask
+        run: CI=1 python scripts/dev_bootstrap.py --setup-only
+      - name: Build lightweight EPUB seed fixtures
+        run: .venv/bin/python tests/make_seed_fixtures.py tests/Downloads.zip
+      - name: Seed local library
+        run: .venv/bin/python scripts/dev_seed_library.py tests/Downloads.zip --no-backup
+      - name: Verify generated seed state
+        run: |
+          .venv/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path('data/dev-seed-report.json').read_text(encoding='utf-8'))
+          assert report['epub_count'] == 8, report
+          assert len(report['imported']) == 8, report
+          assert Path('data/structured_output/422601').is_dir()
+          assert Path('data/structured_output/900001').is_dir()
+          assert Path('data/structured_output/900002').is_dir()
+          assert len(list(Path('data/batched_epubs').glob('*.epub'))) == 5
+          PY
+      - name: Start seeded ArchiveDB and verify library API
+        shell: bash
+        run: |
+          set -euo pipefail
+          CI=1 python scripts/dev_bootstrap.py > server.log 2>&1 &
+          BOOT_PID=$!
+          cleanup() {
+            pkill -P "$BOOT_PID" 2>/dev/null || true
+            kill "$BOOT_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          for attempt in $(seq 1 120); do
+            if curl --fail --silent http://127.0.0.1:5004/login >/dev/null; then
+              break
+            fi
+            if ! kill -0 "$BOOT_PID" 2>/dev/null; then
+              cat server.log
+              exit 1
+            fi
+            sleep 1
+          done
+
+          curl --fail --silent --show-error \
+            -c cookies.txt \
+            -d 'email=dev@arcdb.local&password=arcdb-dev-123' \
+            -X POST http://127.0.0.1:5004/login >/dev/null
+
+          curl --fail --silent --show-error \
+            -b cookies.txt \
+            -H 'Content-Type: application/json' \
+            -d '{"page":1,"limit":50}' \
+            http://127.0.0.1:5004/api/library > library.json
+
+          .venv/bin/python - <<'PY'
+          import json
+          data = json.load(open('library.json', encoding='utf-8'))
+          assert data['total'] >= 7, data
+          assert '422601' in {str(n['id']) for n in data['novels']}, data
+          assert '900001' in {str(n['id']) for n in data['novels']}, data
+          assert '900002' in {str(n['id']) for n in data['novels']}, data
+          assert '422601' in data['userData'], data
+          print(f"Seeded API smoke test passed with {data['total']} novels.")
+          PY
