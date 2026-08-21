@@ -32,6 +32,8 @@ jobs:
           scripts/dev_seed.py
           scripts/dev_seed_library.py
           scripts/migrate_state_to_sqlite.py
+          scripts/verify_migration_backup.py
+          scripts/export_sqlite_to_legacy.py
           scripts/materialize_baseline.py
           tests/make_seed_fixtures.py
           tests/test_sqlite_state.py
@@ -171,7 +173,9 @@ jobs:
       - name: Repeat migration and preserve previous SQLite
         run: PYTHONPATH=. .venv/bin/python scripts/migrate_state_to_sqlite.py --verify --require-core
       - name: Verify migration artifacts and legacy sources still exist
+        shell: bash
         run: |
+          set -euo pipefail
           test -f data/arcdb.sqlite3
           test -f data/metadata/users.json
           test -f data/metadata/user_data.json
@@ -179,3 +183,14 @@ jobs:
           test $(find data/migration-backups -name manifest.json | wc -l) -ge 2
           test $(find data/migration-backups -path '*previous-sqlite/*.verified-copy' | wc -l) -ge 1
           test $(find data/migration-backups -path '*previous-sqlite/*.pre-migration-original' | wc -l) -ge 1
+          LATEST=$(find data/migration-backups -mindepth 1 -maxdepth 1 -type d | sort | tail -n1)
+          PYTHONPATH=. .venv/bin/python scripts/verify_migration_backup.py "$LATEST" --check-current-sources
+      - name: Verify reverse export path without overwriting legacy files
+        run: |
+          PYTHONPATH=. .venv/bin/python scripts/export_sqlite_to_legacy.py \
+            --db data/arcdb.sqlite3 \
+            --output-dir data/legacy-export-test
+          test -f data/legacy-export-test/users.json
+          test -f data/legacy-export-test/user_data.json
+          test -f data/legacy-export-test/collections.json
+          test -f data/legacy-export-test/manifest.json
