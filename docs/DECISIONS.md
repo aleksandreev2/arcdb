@@ -1,0 +1,153 @@
+# ArchiveDB architecture decisions
+
+This file records important decisions so future contributors and AI assistants do not repeatedly re-open settled questions without new evidence.
+
+## ADR-001 — Keep OCI as the primary compute origin
+
+Status: accepted.
+
+Decision:
+
+- keep the existing OCI Ampere VM as the heavy compute origin;
+- do not rewrite the application onto Cloudflare Workers.
+
+Reasoning:
+
+ArchiveDB has Python/Flask, Telethon, local filesystem workflows and heavy EPUB/ZIP/image processing. These are natural Linux VM workloads. Cloudflare should be used as edge/cache/security/object delivery rather than as a forced replacement for the origin.
+
+Revisit if:
+
+- the application is fundamentally rewritten;
+- measured economics/operations justify another compute platform.
+
+## ADR-002 — Use SQLite WAL for mutable state on the single VM
+
+Status: accepted for current architecture.
+
+Decision:
+
+Replace hot JSON whole-file state with SQLite WAL on the OCI Block Volume.
+
+Reasoning:
+
+- one primary VM;
+- low operational complexity;
+- transactions and indexes;
+- avoids whole-file rewrites;
+- works well with local persistent block storage;
+- easy to back up and inspect.
+
+Not a forever constraint. PostgreSQL becomes reasonable if real multi-node/high-write requirements emerge.
+
+## ADR-003 — Migration is non-destructive and candidate-first
+
+Status: mandatory.
+
+Decision:
+
+- legacy data is never deleted as part of migration;
+- migration builds a separate candidate DB;
+- source files are backed up and hashed;
+- candidate must pass round-trip and integrity checks;
+- existing SQLite target must be preserved before promotion.
+
+Reasoning:
+
+The highest-risk failure is silent user-state loss. Operational simplicity is less important than recoverability during cutover.
+
+## ADR-004 — Preserve API/UI during storage migration
+
+Status: accepted.
+
+Decision:
+
+Introduce storage adapters and dual-write/read feature flags rather than changing frontend/API contracts at the same time as persistence.
+
+Reasoning:
+
+It isolates failures and makes parity tests meaningful.
+
+## ADR-005 — Separate only services with clear process-lifecycle reasons
+
+Status: accepted.
+
+Decision:
+
+Near-term split:
+
+- web;
+- EPUB packager worker;
+- Telegram/Telethon worker.
+
+Do not create many microservices.
+
+Reasoning:
+
+Packaging is long-running and unsuitable for HTTP request lifetime. Telethon must not duplicate with web workers. The rest benefits from staying in a modular Flask application until proven otherwise.
+
+## ADR-006 — Do not scale Gunicorn processes before shared-state cleanup
+
+Status: accepted.
+
+Decision:
+
+Avoid blindly increasing WSGI process count while process-local rate limits/caches/Telethon/locks affect correctness.
+
+Reasoning:
+
+Multiple processes would have divergent in-memory state and may duplicate external clients.
+
+## ADR-007 — Move expensive filesystem discovery out of request paths
+
+Status: planned/accepted direction.
+
+Decision:
+
+Create a persistent novel/chapter index updated at ingest/change time rather than repeatedly scanning directories per request.
+
+Reasoning:
+
+Repeated `os.walk`, full-list filtering/sorting and linear lookups become increasingly expensive as the library grows.
+
+## ADR-008 — Use R2 selectively for immutable objects, not as a universal filesystem
+
+Status: planned.
+
+Decision:
+
+Potential R2 objects:
+
+- release EPUBs;
+- covers;
+- public images;
+- uploads/exports where direct object delivery helps.
+
+Keep SQLite and POSIX working data on Block Volume.
+
+Reasoning:
+
+Object storage is useful for immutable/large delivery objects, but not for workloads needing random local filesystem semantics.
+
+## ADR-009 — Keep repository documentation as project memory
+
+Status: accepted.
+
+Decision:
+
+Material changes must update relevant docs and `AGENTS.md` when they change rules/status.
+
+Reasoning:
+
+The project is being developed across multiple chats/tools and may be handed to other AI systems. Architecture knowledge must not live only in conversation history.
+
+## ADR-010 — Production baseline must be reconciled before deployment
+
+Status: mandatory.
+
+Decision:
+
+Do not assume the archived source in Git is byte-identical to the live OCI application. Obtain a sanitized snapshot/inventory or owner-provided comparison before replacing production code.
+
+Reasoning:
+
+The owner has not provided direct SSH access and production may contain newer local changes.
