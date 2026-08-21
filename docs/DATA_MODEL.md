@@ -12,7 +12,7 @@ The archived baseline uses files such as:
 |---|---|---|
 | `users.json` | users/auth/verification/reset metadata | SQLite `users` |
 | `user_data.json` | per-user per-novel state/progress/download flags | SQLite `user_state_users` + `user_novel_state` |
-| `collections.json` | collections metadata | SQLite `collections` |
+| `collections.json` | collections metadata, including explicit empty user buckets | SQLite `collection_users` + `collections` |
 | collection membership embedded in user state | novel membership in collections | SQLite `collection_items` |
 | `user_uploads.json` | uploaded-title metadata/approval | SQLite `user_uploads` |
 | `custom_meta.json` | custom novel/file metadata | SQLite `custom_metadata` |
@@ -20,7 +20,7 @@ The archived baseline uses files such as:
 
 During migration, original payloads are preserved so unknown/unmodeled fields are not silently lost.
 
-## 3. SQLite schema v2
+## 3. SQLite schema v3
 
 ### `schema_meta`
 
@@ -43,7 +43,7 @@ Normalized columns currently include:
 - password reset metadata;
 - original payload JSON.
 
-Users/auth are not yet runtime dual-written in Phase 2A.
+Users/auth are not yet runtime dual-written; that higher-risk domain is Phase 2D.
 
 ### `user_state_users`
 
@@ -87,7 +87,23 @@ Fields include:
 - sort order;
 - original payload.
 
-Collection metadata runtime dual-write is Phase 2B.
+Phase 2B runtime dual-write replaces the affected user's ordered collection rows after the authoritative `collections.json` write succeeds. Complete payload JSON is preserved.
+
+### `collection_users`
+
+Primary key: user email (case-insensitive).
+
+Purpose: represent a top-level `collections.json` bucket even when it contains no collections.
+
+Example:
+
+```json
+{
+  "user@example.com": []
+}
+```
+
+This table was added in schema v3. Export/parity no longer depends on the stale initial `legacy_documents` snapshot to reproduce an empty live container.
 
 ### `collection_items`
 
@@ -95,7 +111,7 @@ Primary key: `(user_email, collection_id, novel_key)`.
 
 Represents membership separately from collection metadata.
 
-Phase 2A already mirrors memberships embedded in a per-novel record whenever that record changes. Phase 2B must cover every dedicated collection mutation route before this table can be considered a complete runtime mirror.
+Phase 2A mirrors memberships embedded in a per-novel record whenever that record changes. Phase 2B additionally covers dedicated assign/unassign/delete cleanup and community import routes. Full parity independently compares the complete normalized `collection_items` relation against memberships embedded in `user_data.json`.
 
 ### `user_uploads`
 
@@ -115,9 +131,9 @@ Stores original custom metadata payload. Runtime dual-write planned for Phase 2C
 
 Primary key: normalized email. Runtime dual-write planned for Phase 2C.
 
-## 4. Runtime ownership during Phase 2A
+## 4. Runtime ownership during Phase 2B
 
-For `user_data.json` state:
+For `user_data.json` and `collections.json` state:
 
 ```text
 legacy JSON
@@ -125,9 +141,9 @@ legacy JSON
   - primary write happens first
 
 SQLite
-  - shadow write of changed rows
+  - shadow write of changed user-state rows and affected collection containers
   - immediate per-row verification in local/CI when enabled
-  - full-document semantic parity check available
+  - full-document plus normalized membership semantic parity check available
 ```
 
 This is intentionally asymmetric. SQLite must not become authoritative until read-cutover tests are complete.
@@ -232,7 +248,7 @@ Expected later tables/entities may include:
 - content hash;
 - optional word count/update time.
 
-These are future plans, not part of state schema v2.
+These are future plans, not part of state schema v3.
 
 ## 9. Storage semantics
 

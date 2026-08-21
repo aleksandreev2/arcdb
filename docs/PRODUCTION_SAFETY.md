@@ -117,6 +117,8 @@ arcdb.sqlite3.candidate-YYYYMMDD-HHMMSS-PID
 
 Import legacy documents into this candidate.
 
+Do not call schema initialization as an in-place v2 -> v3 upgrade. The initializer refuses version changes; rebuild the candidate from authoritative legacy files so empty collection containers can be reconstructed and verified.
+
 ### Step 5 — application-data verification
 
 Reconstruct supported legacy documents from SQLite and compare them to the in-memory snapshot used for import.
@@ -126,7 +128,8 @@ The comparison must include:
 - users;
 - user state/progress;
 - empty user state containers;
-- collections, including empty collection lists;
+- collections, including empty collection lists through `collection_users`;
+- normalized `collection_items` against every membership embedded in `user_data.json`;
 - uploads;
 - custom metadata;
 - allowlist.

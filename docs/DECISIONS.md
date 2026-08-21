@@ -205,3 +205,20 @@ Production must not use this convenience path. Production shadow creation/replac
 Reasoning:
 
 Fast reproducible local development is valuable, but automatic production persistence replacement would violate the project's migration safety model.
+
+## ADR-014 — Preserve explicit empty legacy containers in normalized tables
+
+Status: accepted.
+
+Decision:
+
+Use explicit container tables for top-level legacy buckets whose empty presence is semantically observable:
+
+- `user_state_users` for `{"user@example.com": {}}`;
+- `collection_users` for `{"user@example.com": []}`.
+
+Do not depend on the immutable initial `legacy_documents` snapshot to reconstruct live empty containers after runtime mutations.
+
+Reasoning:
+
+Deleting a user's final child row must not make an existing empty top-level bucket indistinguishable from an absent user. Runtime parity and reverse export must reproduce the current legacy document exactly, including empty containers.

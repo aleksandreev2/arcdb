@@ -56,6 +56,7 @@ def replace_from_documents(
         for table in (
             "collection_items",
             "collections",
+            "collection_users",
             "user_novel_state",
             "user_state_users",
             "users",
@@ -136,6 +137,10 @@ def replace_from_documents(
         for email, raw_collections in collections.items():
             if not isinstance(raw_collections, list):
                 continue
+            conn.execute(
+                "INSERT OR IGNORE INTO collection_users(user_email) VALUES (?)",
+                (str(email),),
+            )
             for position, raw in enumerate(raw_collections):
                 if not isinstance(raw, dict) or raw.get("id") is None:
                     continue
@@ -189,6 +194,7 @@ def state_counts(conn: sqlite3.Connection) -> dict[str, int]:
         "users",
         "user_state_users",
         "user_novel_state",
+        "collection_users",
         "collections",
         "collection_items",
         "user_uploads",
@@ -224,7 +230,10 @@ def export_collections(conn: sqlite3.Connection) -> dict[str, Any]:
     result: dict[str, Any] = {}
     if isinstance(source, dict):
         for email, raw in source.items():
-            result[str(email)] = [] if isinstance(raw, list) else raw
+            if not isinstance(raw, list):
+                result[str(email)] = raw
+    for row in conn.execute("SELECT user_email FROM collection_users ORDER BY user_email"):
+        result.setdefault(row["user_email"], [])
     for row in conn.execute(
         "SELECT user_email, payload_json FROM collections ORDER BY user_email, sort_order"
     ):

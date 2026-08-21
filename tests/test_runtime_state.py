@@ -7,9 +7,17 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from arcdb.storage.legacy_import import replace_from_documents
-from arcdb.storage.runtime_state import ShadowStateError, mirror_user_changes
+from arcdb.storage.legacy_import import export_collections, replace_from_documents
+from arcdb.storage.runtime_state import (
+    ShadowStateError,
+    mirror_collection_user,
+    mirror_user_changes,
+)
 from arcdb.storage.sqlite_db import connect_db, initialize_schema
+from arcdb.storage.state_parity import (
+    verify_collections_parity,
+    verify_user_data_parity,
+)
 
 
 class RuntimeStateTests(unittest.TestCase):
@@ -132,6 +140,152 @@ class RuntimeStateTests(unittest.TestCase):
             ):
                 with self.assertRaises(ShadowStateError):
                     mirror_user_changes("x", {}, {"1": {"progress": 1}}, reason="missing")
+
+    def test_mirrors_collection_create_rename_delete_and_empty_container(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "arcdb.sqlite3"
+            self._seed(db, {"dev@arcdb.local": {}})
+            env = {
+                "STATE_DUAL_WRITE": "1",
+                "STATE_DUAL_WRITE_VERIFY": "1",
+                "SQLITE_DB_PATH": str(db),
+            }
+            created = [
+                {"id": "a", "name": "First", "future": {"keep": True}},
+                {"id": "b", "name": "Second"},
+            ]
+            renamed = [
+                {"id": "a", "name": "Renamed", "future": {"keep": True}},
+                {"id": "b", "name": "Second"},
+            ]
+            with patch.dict(os.environ, env, clear=False):
+                self.assertEqual(
+                    mirror_collection_user(
+                        "dev@arcdb.local", created, reason="create"
+                    ),
+                    2,
+                )
+                self.assertEqual(
+                    mirror_collection_user(
+                        "dev@arcdb.local", renamed, reason="rename"
+                    ),
+                    2,
+                )
+                self.assertEqual(
+                    mirror_collection_user(
+                        "dev@arcdb.local", renamed, reason="idempotent"
+                    ),
+                    2,
+                )
+                self.assertEqual(
+                    mirror_collection_user(
+                        "dev@arcdb.local", [], reason="delete-last"
+                    ),
+                    0,
+                )
+
+            conn = connect_db(db)
+            try:
+                self.assertEqual(export_collections(conn), {"dev@arcdb.local": []})
+                self.assertIsNotNone(
+                    conn.execute(
+                        "SELECT 1 FROM collection_users WHERE user_email=?",
+                        ("dev@arcdb.local",),
+                    ).fetchone()
+                )
+                self.assertEqual(
+                    conn.execute(
+                        "SELECT COUNT(*) FROM collections WHERE user_email=?",
+                        ("dev@arcdb.local",),
+                    ).fetchone()[0],
+                    0,
+                )
+            finally:
+                conn.close()
+
+    def test_collection_mirror_rejects_unreproducible_legacy_shape(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "arcdb.sqlite3"
+            self._seed(db, {"dev@arcdb.local": {}})
+            env = {
+                "STATE_DUAL_WRITE": "1",
+                "STATE_DUAL_WRITE_VERIFY": "1",
+                "SQLITE_DB_PATH": str(db),
+            }
+            with patch.dict(os.environ, env, clear=False):
+                with self.assertRaises(ShadowStateError):
+                    mirror_collection_user(
+                        "dev@arcdb.local", [{"name": "missing id"}], reason="bad"
+                    )
+                with self.assertRaises(ShadowStateError):
+                    mirror_collection_user(
+                        "dev@arcdb.local",
+                        [{"id": "same"}, {"id": "same"}],
+                        reason="duplicate",
+                    )
+
+    def test_full_collection_and_membership_parity_detects_mismatch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db = root / "arcdb.sqlite3"
+            user_data = {
+                "dev@arcdb.local": {
+                    "42": {
+                        "status": "reading",
+                        "progress": 1,
+                        "collections": ["reading"],
+                    }
+                }
+            }
+            collections = {
+                "empty@arcdb.local": [],
+                "dev@arcdb.local": [{"id": "reading", "name": "Reading"}],
+            }
+            conn = connect_db(db)
+            try:
+                initialize_schema(conn)
+                replace_from_documents(
+                    conn,
+                    users={},
+                    user_data=user_data,
+                    collections=collections,
+                    user_uploads={},
+                    custom_meta={},
+                    allowed_emails=[],
+                )
+            finally:
+                conn.close()
+
+            user_data_path = root / "user_data.json"
+            collections_path = root / "collections.json"
+            user_data_path.write_text(json.dumps(user_data), encoding="utf-8")
+            collections_path.write_text(json.dumps(collections), encoding="utf-8")
+            self.assertEqual(
+                verify_user_data_parity(user_data_path=user_data_path, db_path=db),
+                {"users": 1, "records": 1, "memberships": 1},
+            )
+            self.assertEqual(
+                verify_collections_parity(
+                    collections_path=collections_path, db_path=db
+                ),
+                {"users": 2, "collections": 1},
+            )
+
+            conn = connect_db(db)
+            try:
+                conn.execute("DELETE FROM collection_items")
+                conn.commit()
+            finally:
+                conn.close()
+            with self.assertRaises(ShadowStateError):
+                verify_user_data_parity(user_data_path=user_data_path, db_path=db)
+
+            collections["dev@arcdb.local"][0]["name"] = "Diverged"
+            collections_path.write_text(json.dumps(collections), encoding="utf-8")
+            with self.assertRaises(ShadowStateError):
+                verify_collections_parity(
+                    collections_path=collections_path, db_path=db
+                )
 
 
 if __name__ == "__main__":

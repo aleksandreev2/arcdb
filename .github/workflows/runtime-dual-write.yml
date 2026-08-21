@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  user-state-dual-write:
+  state-dual-write:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -29,7 +29,7 @@ jobs:
           tests/test_runtime_state.py
           tests/test_runtime_overlays.py
 
-      - name: Exercise real user-state API dual-write
+      - name: Exercise real state and collection API dual-write
         shell: bash
         run: |
           set -euo pipefail
@@ -81,6 +81,7 @@ jobs:
             -d '{"id":"422601","hide":false}' \
             -X POST http://127.0.0.1:5004/api/user_hide >/dev/null
 
+          PYTHONPATH=. .venv/bin/python tests/runtime_collection_workflow.py
           PYTHONPATH=. .venv/bin/python scripts/verify_state_parity.py
 
           PYTHONPATH=. .venv/bin/python - <<'PY'
@@ -107,7 +108,7 @@ jobs:
           assert row[1] == 'finished', row
           assert row[2] == 0, row
           assert json.loads(row[3]) == record, (json.loads(row[3]), record)
-          print('Runtime user-state dual-write API parity passed.')
+          print('Runtime user-state and collection dual-write API parity passed.')
           PY
 
           if grep -q '\[STATE-DUAL-WRITE\]\[ERROR\]' server.log; then

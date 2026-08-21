@@ -44,6 +44,7 @@ jobs:
           tests/test_safe_migration.py
           tests/test_runtime_state.py
           tests/test_runtime_overlays.py
+          tests/runtime_collection_workflow.py
       - name: Verify required templates
         run: |
           test -f .runtime/source/templates/login.html

@@ -113,6 +113,19 @@ def connect_db(path: str | Path) -> sqlite3.Connection:
 
 
 def initialize_schema(conn: sqlite3.Connection) -> None:
+    has_schema_meta = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_meta'"
+    ).fetchone()
+    if has_schema_meta is not None:
+        existing = conn.execute(
+            "SELECT value FROM schema_meta WHERE key='schema_version'"
+        ).fetchone()
+        if existing is not None and str(existing[0]) != str(SCHEMA_VERSION):
+            raise RuntimeError(
+                "Refusing an in-place SQLite schema version change from "
+                f"{existing[0]} to {SCHEMA_VERSION}; rebuild a verified candidate "
+                "from authoritative legacy state."
+            )
     conn.executescript(SCHEMA_SQL)
     conn.execute(
         "INSERT INTO schema_meta(key, value) VALUES('schema_version', ?) "

@@ -60,14 +60,15 @@ Local development uses strict verification. Full `user_data.json` parity is chec
 
 ### 2B — collections
 
-Next.
+Status: implemented and covered by dedicated runtime CI.
 
-- create collection;
-- rename collection;
-- delete collection;
-- add/remove membership through every collection route;
-- bulk collection operations;
-- compare `collections.json` plus embedded memberships against SQLite.
+- create and rename collection metadata;
+- delete collection metadata and clean every embedded membership;
+- add/remove membership through collection and bulk routes;
+- community collection import;
+- repeated/idempotent operations;
+- preserve explicit empty `collections.json` user buckets with schema v3 `collection_users`;
+- compare `collections.json`, embedded payload memberships and normalized `collection_items` against SQLite.
 
 ### 2C — uploads/custom metadata/allowlist
 
@@ -219,19 +220,18 @@ After process-local state is removed/split:
 ## Current immediate order
 
 ```text
-1. finish collections dual-write
-2. uploads/custom metadata/allowlist dual-write
-3. users/auth dual-write
-4. SQLite read feature flag + API parity
-5. SQLite primary reads
-6. stop legacy writes domain-by-domain
-7. immediate upload/EPUB I/O fixes
-8. async packager
-9. Telethon split
-10. persistent library index
-11. frontend/static split
-12. R2/Cloudflare optimization
-13. production rollout after live reconciliation
+1. uploads/custom metadata/allowlist dual-write
+2. users/auth dual-write
+3. SQLite read feature flag + API parity
+4. SQLite primary reads
+5. stop legacy writes domain-by-domain
+6. immediate upload/EPUB I/O fixes
+7. async packager
+8. Telethon split
+9. persistent library index
+10. frontend/static split
+11. R2/Cloudflare optimization
+12. production rollout after live reconciliation
 ```
 
 ## Explicit non-goals for now

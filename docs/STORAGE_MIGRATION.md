@@ -30,13 +30,14 @@ Connection defaults:
 - foreign keys enabled;
 - SQLite file intended for OCI Block Volume in production.
 
-## Schema v2
+## Schema v3
 
 Current normalized state:
 
 - `users`;
 - `user_state_users`;
 - `user_novel_state`;
+- `collection_users`;
 - `collections`;
 - `collection_items`;
 - `user_uploads`;
@@ -50,6 +51,16 @@ Current normalized state:
 ```
 
 can survive both initial migration and runtime deletion of the user's last per-novel row. This avoids relying on an old imported document snapshot to preserve an empty live container.
+
+`collection_users` provides the same guarantee for a top-level collection bucket such as:
+
+```json
+{"user@example.com": []}
+```
+
+Schema v3 exports live empty collection containers from this table rather than relying on the initial `legacy_documents` snapshot.
+
+Schema version changes are fail-closed and are not applied in place. A schema v2 shadow must be rebuilt as a separate verified schema v3 candidate from authoritative legacy state, then promoted through the normal backup/hash/integrity procedure.
 
 Each migrated record still keeps its original JSON payload during the transition. `legacy_documents` stores imported source-document representations for audit and migration round-trip verification.
 
@@ -146,7 +157,7 @@ Local bootstrap has one additional convenience path: when a **local-development-
 
 ## Phase 2 — runtime dual-write
 
-Status: in progress. Phase 2A is implemented.
+Status: in progress. Phase 2A and Phase 2B are implemented.
 
 ### Write order
 
@@ -192,7 +203,7 @@ For each changed per-novel record it mirrors:
 - complete raw JSON payload;
 - embedded collection memberships for that record.
 
-This does **not** mean collection routes are fully migrated. Collection metadata and every membership mutation path are Phase 2B.
+Phase 2B completes the dedicated collection mutation routes listed below. Reads still remain on legacy JSON, and collection sharing itself remains a read-only collection-state operation.
 
 ### Feature flags
 
@@ -222,7 +233,13 @@ Run:
 .venv\Scripts\python.exe scripts\verify_state_parity.py
 ```
 
-It opens SQLite read-only and verifies the entire semantic `user_data.json` document against the SQLite shadow, including empty user buckets and raw per-record payloads.
+It opens SQLite read-only and verifies:
+
+- the entire semantic `user_data.json` document;
+- every normalized `collection_items` membership;
+- the entire semantic `collections.json` document;
+- empty user-state and collection containers;
+- raw per-record and collection payloads/order.
 
 Local `start.bat` performs this parity check before starting. A compatible equal shadow is reused. A missing/stale local shadow is rebuilt safely from JSON. Automatic rebuild is refused outside `ARCHIVEDB_LOCAL_DEV=1`.
 
@@ -239,16 +256,25 @@ The overlay is intentionally fail-closed:
 
 ### Phase 2B — collections
 
-Next scope:
+Status: implemented and covered by unit plus real Flask API CI.
 
-- collection create/rename/delete;
-- every add/remove membership route;
-- bulk operations;
-- full `collections.json` + membership parity.
+Covered:
+
+- `/api/collection_create`;
+- `/api/collection_rename`;
+- `/api/collection_delete`, including membership cleanup;
+- `/api/collection_assign` add/remove;
+- repeated/idempotent assign, unassign and delete operations;
+- `/api/community/import_collection` metadata plus memberships;
+- existing bulk collection removal through the Phase 2A `mutate_user_data` hook;
+- empty collection containers through `collection_users`;
+- full `collections.json` and `collection_items` parity.
+
+`/api/community/share_collection` remains read-only with respect to collection state and therefore has no collection storage mirror hook.
 
 ### Phase 2C — uploads/custom metadata/allowlist
 
-Then mirror:
+Next. Mirror:
 
 - upload metadata/approval state;
 - custom metadata;
