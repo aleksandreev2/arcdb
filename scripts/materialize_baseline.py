@@ -23,31 +23,30 @@ def read_manifest() -> dict[str, str]:
     return values
 
 
-def bundle_bytes() -> bytes:
-    encoded = "".join(
-        path.read_text(encoding="ascii").strip()
-        for path in sorted(PARTS_DIR.glob("part*.b64"))
-    )
-    return base64.b64decode(encoded, validate=True)
+def bundle_bytes(manifest: dict[str, str]) -> bytes:
+    filenames = [name.strip() for name in manifest["files"].split(",") if name.strip()]
+    if not filenames:
+        raise RuntimeError("Baseline manifest contains no bundle parts.")
+
+    chunks: list[str] = []
+    for name in filenames:
+        path = PARTS_DIR / name
+        if not path.is_file():
+            raise RuntimeError(f"Baseline bundle part is missing: {name}")
+        chunks.append(path.read_text(encoding="ascii").strip())
+    return base64.b64decode("".join(chunks), validate=True)
 
 
 def materialize(target: Path, force: bool = False) -> Path:
     manifest = read_manifest()
     expected = manifest["sha256"]
     expected_size = int(manifest["size"])
-    expected_parts = int(manifest["parts"])
-
-    parts = sorted(PARTS_DIR.glob("part*.b64"))
-    if len(parts) != expected_parts:
-        raise RuntimeError(
-            f"Baseline bundle part count mismatch: expected {expected_parts}, got {len(parts)}"
-        )
 
     marker = target / ".baseline.sha256"
     if not force and marker.exists() and marker.read_text(encoding="ascii").strip() == expected:
         return target
 
-    payload = bundle_bytes()
+    payload = bundle_bytes(manifest)
     if len(payload) != expected_size:
         raise RuntimeError(
             f"Baseline bundle size mismatch: expected {expected_size}, got {len(payload)}"
@@ -71,7 +70,7 @@ def materialize(target: Path, force: bool = False) -> Path:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Extract the temporary ArchiveDB source baseline.")
+    parser = argparse.ArgumentParser(description="Verify and extract the ArchiveDB source baseline.")
     parser.add_argument("--target", type=Path, default=DEFAULT_TARGET)
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args()
