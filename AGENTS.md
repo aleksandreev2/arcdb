@@ -51,11 +51,17 @@ Completed:
   - local/Telegram download counters;
   - changed embedded collection memberships are mirrored with the affected record;
 - full `user_data.json` <-> SQLite parity verifier;
+- runtime dual-write Phase 2B for collection metadata and memberships:
+  - create, rename and delete;
+  - assign/unassign and repeated idempotent operations;
+  - membership cleanup on delete;
+  - community collection import;
+  - explicit empty `collections.json` user containers through schema v3 `collection_users`;
+- full `collections.json` and normalized `collection_items` parity verification;
 - strict local dual-write verification and end-to-end CI.
 
 Still pending:
 
-- complete collection metadata/membership route dual-write;
 - uploads/custom metadata/allowlist dual-write;
 - users/auth dual-write;
 - SQLite reads in Flask;
@@ -66,7 +72,7 @@ Still pending:
 - Telethon service split;
 - R2/static edge migration.
 
-## Current state ownership during Phase 2A
+## Current state ownership during Phase 2B
 
 ```text
 request
@@ -90,7 +96,7 @@ STATE_DUAL_WRITE_VERIFY=1
 
 Production should leave `STATE_DUAL_WRITE` disabled until the explicit production shadow migration/cutover procedure is followed.
 
-`start.bat` verifies complete local `user_data.json` parity before starting. If the local shadow is missing/stale, it can rebuild it from JSON. This automatic rebuild behavior is deliberately local-development only.
+`start.bat` verifies complete local `user_data.json`, `collection_items` and `collections.json` parity before starting. If the local shadow is missing/stale, it can rebuild it from JSON. This automatic rebuild behavior is deliberately local-development only.
 
 ## Storage migration sequence
 
@@ -166,7 +172,7 @@ Safe SQLite migration test:
 .venv\Scripts\python.exe scripts\migrate_state_to_sqlite.py --verify
 ```
 
-Full user-state parity check:
+Full state parity check:
 
 ```bat
 .venv\Scripts\python.exe scripts\verify_state_parity.py
@@ -186,12 +192,11 @@ At minimum:
 
 ## Next ordered work
 
-1. Finish collection metadata/membership dual-write.
-2. Dual-write upload/custom metadata/allowlist state.
-3. Dual-write users/auth with dedicated auth tests.
-4. Add SQLite read-source feature flag and API parity suite.
-5. Move reads to SQLite only after stable parity.
-6. Stop legacy writes domain-by-domain later; keep rollback exports and legacy archives.
+1. Dual-write upload/custom metadata/allowlist state.
+2. Dual-write users/auth with dedicated auth tests.
+3. Add SQLite read-source feature flag and API parity suite.
+4. Move reads to SQLite only after stable parity.
+5. Stop legacy writes domain-by-domain later; keep rollback exports and legacy archives.
 
 Do not jump directly to read cutover while write domains are incomplete.
 

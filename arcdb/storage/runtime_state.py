@@ -74,6 +74,24 @@ def _memberships(raw: Any) -> list[str]:
     return sorted({str(value) for value in values if value is not None})
 
 
+def _validated_collections(raw_collections: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw_collections, list):
+        raise ShadowStateError("Dual-write expects a legacy collection bucket to be a list.")
+    seen: set[str] = set()
+    result: list[dict[str, Any]] = []
+    for position, raw in enumerate(raw_collections):
+        if not isinstance(raw, dict) or raw.get("id") is None:
+            raise ShadowStateError(
+                f"Legacy collection at position {position} is not an object with an id."
+            )
+        collection_id = str(raw["id"])
+        if collection_id in seen:
+            raise ShadowStateError(f"Duplicate legacy collection id: {collection_id}")
+        seen.add(collection_id)
+        result.append(raw)
+    return result
+
+
 def _assert_ready(conn) -> None:
     row = conn.execute("SELECT value FROM schema_meta WHERE key='schema_version'").fetchone()
     if row is None:
@@ -181,6 +199,67 @@ def _verify_one(conn, user_email: str, novel_key: str, expected: Any | None) -> 
         )
 
 
+def _sync_collection_user(
+    conn, user_email: str, raw_collections: list[dict[str, Any]]
+) -> None:
+    conn.execute(
+        "INSERT OR IGNORE INTO collection_users(user_email) VALUES (?)",
+        (user_email,),
+    )
+    conn.execute("DELETE FROM collections WHERE user_email=?", (user_email,))
+    if raw_collections:
+        conn.executemany(
+            """
+            INSERT INTO collections(
+                user_email, collection_id, name, sort_order, payload_json
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    user_email,
+                    str(raw["id"]),
+                    raw.get("name"),
+                    position,
+                    _payload(raw),
+                )
+                for position, raw in enumerate(raw_collections)
+            ],
+        )
+
+
+def _verify_collection_user(
+    conn, user_email: str, expected: list[dict[str, Any]]
+) -> None:
+    container = conn.execute(
+        "SELECT 1 FROM collection_users WHERE user_email=?", (user_email,)
+    ).fetchone()
+    if container is None:
+        raise ShadowStateError(f"SQLite collection container is missing for {user_email}.")
+
+    rows = conn.execute(
+        """
+        SELECT collection_id, name, sort_order, payload_json
+        FROM collections
+        WHERE user_email=?
+        ORDER BY sort_order
+        """,
+        (user_email,),
+    ).fetchall()
+    actual = [json.loads(row["payload_json"]) for row in rows]
+    if actual != expected:
+        raise ShadowStateError(f"SQLite collection payload/order mismatch for {user_email}.")
+    normalized = [
+        (row["collection_id"], row["name"], row["sort_order"])
+        for row in rows
+    ]
+    expected_normalized = [
+        (str(raw["id"]), raw.get("name"), position)
+        for position, raw in enumerate(expected)
+    ]
+    if normalized != expected_normalized:
+        raise ShadowStateError(f"SQLite normalized collection fields mismatch for {user_email}.")
+
+
 def mirror_user_changes(
     user_email: str,
     before_user: dict[str, Any],
@@ -232,3 +311,41 @@ def mirror_user_changes(
             f"[STATE-DUAL-WRITE] {reason}: mirrored {len(changed)} record(s) for {user_email}."
         )
     return changed
+
+
+def mirror_collection_user(
+    user_email: str,
+    raw_collections: Any,
+    *,
+    reason: str,
+) -> int:
+    """Replace one user's collection metadata after collections.json is durable."""
+    if not _enabled():
+        return 0
+    validated = _validated_collections(raw_collections)
+
+    db_path = _db_path()
+    if not db_path.is_file():
+        raise ShadowStateError(
+            f"SQLite shadow database is missing at {db_path}; run scripts/migrate_state_to_sqlite.py first."
+        )
+
+    conn = connect_db(db_path)
+    try:
+        _assert_ready(conn)
+        with conn:
+            _sync_collection_user(conn, str(user_email), validated)
+        if _verify_enabled():
+            _verify_collection_user(conn, str(user_email), validated)
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+    if os.environ.get("STATE_DUAL_WRITE_LOG_SUCCESS", "0") == "1":
+        print(
+            f"[STATE-DUAL-WRITE] {reason}: mirrored {len(validated)} collection(s) "
+            f"for {user_email}."
+        )
+    return len(validated)

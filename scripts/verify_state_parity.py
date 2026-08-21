@@ -8,7 +8,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from arcdb.storage.state_parity import verify_user_data_parity  # noqa: E402
+from arcdb.storage.state_parity import (  # noqa: E402
+    verify_collections_parity,
+    verify_user_data_parity,
+)
 
 
 def parse_env(path: Path) -> dict[str, str]:
@@ -37,11 +40,22 @@ def main() -> int:
     env.update(parse_env(ROOT / ".env"))
     meta_dir = resolve_path(env.get("META_DIR"), ROOT / "data" / "metadata")
     user_data_path = resolve_path(env.get("USER_DATA_PATH"), meta_dir / "user_data.json")
+    collections_path = resolve_path(
+        env.get("COLLECTIONS_PATH"), meta_dir / "collections.json"
+    )
     db_path = resolve_path(env.get("SQLITE_DB_PATH"), ROOT / "data" / "arcdb.sqlite3")
 
-    counts = verify_user_data_parity(user_data_path=user_data_path, db_path=db_path)
+    user_counts = verify_user_data_parity(user_data_path=user_data_path, db_path=db_path)
+    collection_counts = verify_collections_parity(
+        collections_path=collections_path, db_path=db_path
+    )
     print(
-        f"User state parity: OK ({counts['users']} users, {counts['records']} per-novel records)"
+        "State parity: OK "
+        f"({user_counts['users']} user-state containers, "
+        f"{user_counts['records']} per-novel records; "
+        f"{user_counts['memberships']} memberships; "
+        f"{collection_counts['users']} collection containers, "
+        f"{collection_counts['collections']} collections)"
     )
     return 0
 
@@ -50,5 +64,5 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except Exception as exc:
-        print(f"User state parity: FAILED: {exc}", file=sys.stderr)
+        print(f"State parity: FAILED: {exc}", file=sys.stderr)
         raise SystemExit(1)

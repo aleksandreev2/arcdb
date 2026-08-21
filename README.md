@@ -37,7 +37,8 @@ start.bat
 6. verifies and reconstructs the checked-in development baseline into `.runtime/source/`;
 7. creates/maintains the local development login;
 8. if the local library is empty and EPUB fixtures exist in `dev-fixtures/inbox`, seeds once;
-9. starts ArchiveDB at `http://127.0.0.1:5004/login` and opens it in the browser.
+9. creates or verifies the schema v3 SQLite shadow and full user/collection parity;
+10. starts ArchiveDB at `http://127.0.0.1:5004/login` and opens it in the browser.
 
 Normal startup does **not** reset an already populated local library.
 
@@ -98,7 +99,7 @@ It performs `git pull --ff-only` and then launches `start.bat`.
 
 ## SQLite shadow migration
 
-ArchiveDB is migrating hot mutable state away from whole-file JSON rewrites. The current repository contains a SQLite WAL shadow schema/importer, but the Flask baseline has **not yet been switched to SQLite as production source of truth**.
+ArchiveDB is migrating hot mutable state away from whole-file JSON rewrites. The current repository contains a SQLite WAL shadow schema/importer plus Phase 2A user-state and Phase 2B collection dual-write, but the Flask baseline has **not yet been switched to SQLite as production source of truth**.
 
 Local safe migration test:
 
