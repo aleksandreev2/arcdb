@@ -315,14 +315,17 @@ Login/logout themselves only read the user record and mutate Flask session state
 
 ## Phase 3 — SQLite read comparison/cutover
 
-Phase 2 write coverage is complete for schema v3. Phase 3 must still begin in a separate change:
+Status: feature-flagged comparison backend implemented; production cutover pending.
 
-- add read-source feature flag;
-- run seeded API parity tests;
-- enable SQLite reads in local/internal scope;
-- observe mismatches/errors;
-- switch primary reads to SQLite;
-- retain legacy files and rollback controls.
+- `STATE_READ_BACKEND=legacy` is the default;
+- `STATE_READ_BACKEND=sqlite` opens the verified shadow read-only and checks schema v3;
+- missing/stale/invalid SQLite configuration fails closed rather than falling back silently;
+- users, user state, collections, uploads, custom metadata and allowlist reads use the adapter;
+- write helpers bypass it and continue legacy-first durability followed by SQLite mirror;
+- seeded CI compares authenticated API/HTML output from simultaneous legacy and SQLite Flask processes;
+- real mutations also run successfully with SQLite reads enabled and finish at full parity.
+
+Production enablement, observation and primary-read promotion remain pending. Retain legacy files and rollback controls throughout.
 
 Do not combine a new dual-write domain and read-source cutover in one change.
 

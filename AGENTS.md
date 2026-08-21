@@ -74,7 +74,7 @@ Completed:
 
 Still pending:
 
-- SQLite reads in Flask;
+- production enablement of SQLite reads after live reconciliation/observation;
 - removal of JSON writes;
 - production data/runtime cutover;
 - persistent library index;
@@ -91,10 +91,13 @@ request
   -> optional immediate row verification
 
 reads
-  -> legacy JSON only
+  -> `STATE_READ_BACKEND=legacy` by default
+  -> optional read-only SQLite adapter for Phase 3 comparison
 ```
 
 The SQLite mirror must never be treated as authoritative yet.
+
+Phase 3 now provides `STATE_READ_BACKEND=legacy|sqlite` across schema-v3 state domains. `legacy` is mandatory as the default. SQLite mode is for verified local/internal API comparison and must fail closed on a missing, stale or invalid database. Mutation helpers still read legacy directly before the durable legacy-first write.
 
 Local defaults:
 
@@ -204,9 +207,10 @@ At minimum:
 
 ## Next ordered work
 
-1. Add `STATE_READ_BACKEND=legacy|sqlite` behind a feature flag and an API parity suite.
-2. Move reads to SQLite only after stable parity.
-3. Stop legacy writes domain-by-domain later; keep rollback exports and legacy archives.
+1. Reconcile live production and run the verified shadow/API comparison protocol.
+2. Enable SQLite reads only for bounded internal traffic and observe parity/errors.
+3. Make SQLite primary reads only after stable observation.
+4. Stop legacy writes domain-by-domain later; keep rollback exports and legacy archives.
 
 Do not jump directly to read cutover while write domains are incomplete.
 

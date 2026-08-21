@@ -183,6 +183,8 @@ Database file migration and application cutover are separate events.
 
 Repository Phase 2D completes runtime dual-write for all mutable domains currently represented by SQLite schema v3, including full `users.json` payloads. This does not authorize production enablement: the live baseline/paths must still be reconciled, a verified production shadow must exist and `STATE_DUAL_WRITE` remains opt-in. Community/IP-exemption/audit files outside schema v3 are not silently included in this claim.
 
+Phase 3 adds `STATE_READ_BACKEND=legacy|sqlite`, but keeps `legacy` as the default. SQLite mode uses read-only connections and fails closed for missing/stale/invalid state. Do not set it for production-wide traffic merely because seeded CI parity is green: first verify the live shadow, use bounded internal traffic, observe mismatches/errors and prove rollback to `legacy`.
+
 Recommended order:
 
 1. SQLite shadow DB exists and verifies successfully.

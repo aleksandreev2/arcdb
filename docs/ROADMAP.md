@@ -102,17 +102,24 @@ Phase 2 exit criteria:
 
 ## Phase 3 — SQLite read cutover
 
-Do not start until Phase 2 write coverage is complete enough for the target domain.
+Status: comparison backend and seeded API parity implemented; production rollout/primary-read promotion pending.
 
-1. add feature flag for state read source;
-2. run API parity tests using identical seeded state;
-3. test login, library, reader, progress, collections, uploads/admin flows;
-4. enable SQLite reads in local dev;
-5. compare responses against legacy reads;
-6. deploy only after production shadow data is verified;
-7. observe mismatch/error metrics;
-8. promote SQLite as primary read source;
-9. keep legacy files and rollback controls.
+Implemented:
+
+- `STATE_READ_BACKEND=legacy|sqlite`, defaulting to legacy;
+- read-only, schema-checked SQLite reads for every schema-v3 state domain;
+- fail-closed invalid/missing/stale behavior;
+- mutation helpers that continue to read/write legacy first regardless of read backend;
+- simultaneous Flask API parity for login, library, collections, novel, trending, community, reader and admin output;
+- real mutation regressions while SQLite reads are enabled.
+
+Pending:
+
+1. reconcile and verify production state;
+2. enable SQLite reads only for bounded internal traffic;
+3. observe mismatch/error metrics;
+4. promote SQLite as primary read source only after stable observation;
+5. keep legacy files and rollback controls.
 
 Exit criteria:
 
@@ -226,7 +233,7 @@ After process-local state is removed/split:
 ## Current immediate order
 
 ```text
-1. SQLite read feature flag + API parity
+1. production shadow reconciliation + bounded SQLite read observation
 2. SQLite primary reads
 3. stop legacy writes domain-by-domain
 4. immediate upload/EPUB I/O fixes

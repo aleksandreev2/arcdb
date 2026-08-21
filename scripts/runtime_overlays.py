@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-OVERLAY_VERSION = "users-auth-dual-write-v1"
+OVERLAY_VERSION = "sqlite-read-backend-v1"
 
 
 def overlay_digest() -> str:
@@ -92,6 +92,20 @@ def apply_gallery_app_overlay(path: Path) -> None:
 '''
     text = _replace_once(text, old_mutator, new_mutator, "mutate_user_data shadow hook")
 
+    text = _replace_once(
+        text,
+        '''def load_user_data():
+    with _USER_DATA_LOCK:
+        return _load_user_data_unlocked()
+''',
+        '''def load_user_data():
+    with _USER_DATA_LOCK:
+        from arcdb.storage.runtime_reads import read_user_data
+        return read_user_data(_load_user_data_unlocked)
+''',
+        "user data read backend",
+    )
+
     old_metadata_helpers = '''def load_custom_meta():
     return read_json_file(CUSTOM_META_PATH, {})
 
@@ -122,12 +136,16 @@ def mutate_user_uploads(mutator):
         )
         return result
 '''
-    new_metadata_helpers = '''def load_custom_meta():
+    new_metadata_helpers = '''def _load_custom_meta_legacy():
     return read_json_file(CUSTOM_META_PATH, {})
+
+def load_custom_meta():
+    from arcdb.storage.runtime_reads import read_custom_meta
+    return read_custom_meta(_load_custom_meta_legacy)
 
 def save_custom_meta_entry(filename, entry):
     with _CUSTOM_META_LOCK:
-        custom_meta = load_custom_meta()
+        custom_meta = _load_custom_meta_legacy()
         custom_meta[filename] = entry
         write_json_atomic(CUSTOM_META_PATH, custom_meta, indent=4, ensure_ascii=False)
         try:
@@ -145,7 +163,8 @@ def _load_user_uploads_unlocked():
 
 def load_user_uploads():
     with _USER_UPLOADS_LOCK:
-        return _load_user_uploads_unlocked()
+        from arcdb.storage.runtime_reads import read_user_uploads
+        return read_user_uploads(_load_user_uploads_unlocked)
 
 def mutate_user_uploads(mutator, shadow_reason="user_uploads"):
     with _USER_UPLOADS_LOCK:
@@ -186,9 +205,13 @@ def save_collections(data):
     with _COLLECTIONS_LOCK:
         write_json_atomic(COLLECTIONS_PATH, data, ensure_ascii=False, indent=2)
 '''
-    new_collection_helpers = '''def load_collections():
+    new_collection_helpers = '''def _load_collections_legacy():
+    return read_json_file(COLLECTIONS_PATH, {})
+
+def load_collections():
     with _COLLECTIONS_LOCK:
-        return read_json_file(COLLECTIONS_PATH, {})
+        from arcdb.storage.runtime_reads import read_collections
+        return read_collections(_load_collections_legacy)
 
 def _mirror_collections_shadow(email, user_collections, reason):
     try:
@@ -216,16 +239,27 @@ def save_collections(data, shadow_email=None, shadow_reason="collections"):
         "collection metadata shadow hook",
     )
 
+    text = _replace_once(
+        text,
+        "def get_allowed_emails():",
+        "def _get_allowed_emails_legacy():",
+        "allowlist legacy reader name",
+    )
+
     old_allowlist_lock = '''_ALLOWLIST_WRITE_LOCK = threading.Lock()
 
 def remove_email_from_allowlist(email):'''
-    new_allowlist_lock = '''_ALLOWLIST_WRITE_LOCK = threading.Lock()
+    new_allowlist_lock = '''def get_allowed_emails():
+    from arcdb.storage.runtime_reads import read_allowed_emails
+    return read_allowed_emails(_get_allowed_emails_legacy)
+
+_ALLOWLIST_WRITE_LOCK = threading.Lock()
 
 def _mirror_allowlist_shadow(reason):
     try:
         from arcdb.storage.runtime_state import mirror_allowed_emails
         with _ALLOWLIST_WRITE_LOCK:
-            mirror_allowed_emails(get_allowed_emails(), reason=reason)
+            mirror_allowed_emails(_get_allowed_emails_legacy(), reason=reason)
     except Exception as exc:
         print(f"[STATE-DUAL-WRITE][ERROR] {reason}: {exc}")
         if os.environ.get("STATE_DUAL_WRITE_STRICT", "0") == "1":
@@ -266,6 +300,20 @@ def remove_email_from_allowlist(email):'''
         old_users_mutator,
         new_users_mutator,
         "users auth shadow hook",
+    )
+
+    text = _replace_once(
+        text,
+        '''def load_users():
+    with _USERS_LOCK:
+        return _load_users_unlocked()
+''',
+        '''def load_users():
+    with _USERS_LOCK:
+        from arcdb.storage.runtime_reads import read_users
+        return read_users(_load_users_unlocked)
+''',
+        "auth users read backend",
     )
 
     text = _replace_in_section(

@@ -29,6 +29,7 @@ jobs:
           arcdb/storage/legacy_import.py
           arcdb/storage/safe_migration.py
           arcdb/storage/runtime_state.py
+          arcdb/storage/runtime_reads.py
           arcdb/storage/state_parity.py
           scripts/dev_bootstrap.py
           scripts/dev_seed.py
@@ -43,6 +44,7 @@ jobs:
           tests/test_sqlite_state.py
           tests/test_safe_migration.py
           tests/test_runtime_state.py
+          tests/test_runtime_reads.py
           tests/test_runtime_users.py
           tests/test_runtime_metadata.py
           tests/test_runtime_overlays.py
@@ -50,6 +52,7 @@ jobs:
           tests/runtime_collection_workflow.py
           tests/runtime_metadata_workflow.py
           tests/runtime_auth_workflow.py
+          tests/runtime_read_parity.py
       - name: Verify required templates
         run: |
           test -f .runtime/source/templates/login.html
@@ -183,6 +186,7 @@ jobs:
           tests/test_sqlite_state.py
           tests/test_safe_migration.py
           tests/test_runtime_state.py
+          tests/test_runtime_reads.py
           tests/test_runtime_users.py
           tests/test_runtime_metadata.py
           tests/test_runtime_overlays.py

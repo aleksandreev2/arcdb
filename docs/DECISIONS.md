@@ -254,3 +254,20 @@ Decision:
 Reasoning:
 
 Auth is the highest-risk write domain. The existing table already models every known baseline auth field while `payload_json` prevents production-only fields from being lost. Keeping the durable legacy write first preserves the established rollback source, and a separate real HTTP workflow proves registration, verification, login and reset behavior without combining read cutover.
+
+## ADR-017 — Introduce SQLite reads as an opt-in fail-closed comparison backend
+
+Status: accepted for Phase 3 comparison.
+
+Decision:
+
+- expose `STATE_READ_BACKEND=legacy|sqlite` and default to `legacy`;
+- read SQLite through read-only connections with an exact schema-version check;
+- never silently fall back to legacy when SQLite mode is explicitly selected but unavailable/stale;
+- route every schema-v3 application state read through the adapter;
+- keep mutation helpers on direct legacy reads so write ordering remains legacy durable first, SQLite mirror second;
+- compare simultaneous real Flask responses on identical seeded state before any primary-read promotion.
+
+Reasoning:
+
+A silent fallback would hide an unsafe cutover, while changing write inputs based on the read flag could invert or corrupt the established migration sequence. Explicit fail-closed selection makes problems observable and the dual-process parity suite isolates backend differences without changing API contracts. Production-primary SQLite reads remain a later operational decision after live reconciliation and observation.

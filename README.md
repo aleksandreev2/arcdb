@@ -101,6 +101,15 @@ It performs `git pull --ff-only` and then launches `start.bat`.
 
 ArchiveDB is migrating hot mutable state away from whole-file JSON rewrites. Phase 2A user-state, Phase 2B collections, Phase 2C uploads/custom-metadata/allowlist and Phase 2D users/auth now dual-write to the verified SQLite WAL shadow after the durable legacy write. The Flask baseline still reads legacy files and has **not** switched SQLite to the production source of truth.
 
+Phase 3 adds an opt-in comparison backend:
+
+```text
+STATE_READ_BACKEND=legacy   # default
+STATE_READ_BACKEND=sqlite   # verified shadow comparison only
+```
+
+Both backends are exercised against identical seeded API flows in CI. SQLite is not the production default or source of truth; production enablement still requires live reconciliation and an observation period.
+
 Local safe migration test:
 
 ```bat
