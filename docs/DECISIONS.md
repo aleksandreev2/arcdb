@@ -289,3 +289,21 @@ Decision:
 Reasoning:
 
 Seeded dual-process parity proves deterministic fixtures but not live production traffic or production-only fields. Legacy-serving shadow comparison exercises the same runtime loaders without changing response ownership, providing an observable low-risk gate before a bounded SQLite canary. Restricting it to legacy mode avoids an ambiguous configuration or silent fallback once SQLite is explicitly selected.
+
+## ADR-019 — Require an explicit-path, non-authorizing readiness report before production observation
+
+Status: accepted for Phase 3 production preparation.
+
+Decision:
+
+- require operators to supply the discovered production metadata root and SQLite path explicitly;
+- open SQLite with `mode=ro` and `query_only`, and compare all schema-v3 exports from one read transaction;
+- require core users/user-data/collections files and exact full-domain/membership parity;
+- run schema, quick, integrity and foreign-key checks;
+- recursively fingerprint legacy metadata before and after the preflight and fail if any file appears, disappears or changes;
+- keep reports payload-free and path-free, create them only at a new path, and set canary/primary authorization false;
+- treat unknown-file counts as a reconciliation prompt rather than silently claiming those files are migrated.
+
+Reasoning:
+
+Local and CI parity cannot prove that production paths, live-only files or live source match the repository assumptions. A read-only explicit-path gate produces shareable evidence without mutating production or leaking auth state, while its deliberately non-authorizing decision fields prevent an automated report from being mistaken for approval to change the read source.

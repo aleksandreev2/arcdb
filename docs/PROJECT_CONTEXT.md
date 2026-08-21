@@ -101,7 +101,8 @@ Implemented in repository:
 - full users/auth, user-state, collection metadata, normalized membership and Phase 2C metadata parity checker;
 - real route-level dual-write CI;
 - feature-flagged SQLite reads plus simultaneous legacy/SQLite API parity;
-- legacy-serving runtime shadow comparison with payload-free events and strict all-domain CI.
+- legacy-serving runtime shadow comparison with payload-free events and strict all-domain CI;
+- explicit-path, read-only production readiness preflight with recursive source-hash stability, full parity and a sanitized non-authorizing report.
 
 SQLite is **not** the default or production read source. Phase 3 now exposes `STATE_READ_BACKEND=legacy|sqlite`; local/CI can run the same authenticated API flows against both backends, while `legacy` remains default. Phase 3B adds `STATE_READ_SHADOW_COMPARE=1` for legacy-served requests: SQLite is read only for equality checking and payload-free match/mismatch/error events, so non-strict observation cannot replace or damage the authoritative response.
 
@@ -178,6 +179,12 @@ Manual full parity check:
 .venv\Scripts\python.exe scripts\verify_state_parity.py
 ```
 
+Explicit read-only cutover preflight (use discovered production paths, never guessed ones):
+
+```bat
+.venv\Scripts\python.exe scripts\verify_read_cutover_readiness.py --meta-dir data\metadata --db data\arcdb.sqlite3
+```
+
 ## Important source problems already identified
 
 1. JSON whole-file state rewrites.
@@ -216,16 +223,16 @@ Avoid a full rewrite. Keep Flask and preserve API/UI behavior while extracting r
 
 ## Current next ordered work
 
-1. Reconcile live production and verify its shadow against authoritative legacy state.
-2. Run legacy-serving shadow comparison for bounded internal traffic and observe payload-free events.
-3. Run a separate bounded SQLite-read canary with tested rollback to `legacy`.
-4. Make SQLite primary read source only after stable observation.
-5. Stop JSON writes domain-by-domain; preserve legacy/export rollback paths.
-6. Optimize upload fsync and EPUB streaming.
-7. Move packaging to async jobs.
-8. Split Telethon into its own service.
-9. Build persistent novel/chapter index.
-10. Split static frontend assets and introduce R2 selectively where justified.
+1. Obtain the live inventory/sanitized baseline and run the explicit-path readiness preflight.
+2. Reconcile unknown files and any live source/config differences without overwriting production.
+3. Run legacy-serving shadow comparison for bounded internal traffic and observe payload-free events.
+4. Run a separate bounded SQLite-read canary with tested rollback to `legacy`.
+5. Make SQLite primary read source only after stable observation.
+6. Stop JSON writes domain-by-domain; preserve legacy/export rollback paths.
+7. Optimize upload fsync and EPUB streaming.
+8. Move packaging to async jobs.
+9. Split Telethon into its own service.
+10. Build the persistent index and later frontend/R2 optimizations.
 
 ## Where to read next
 

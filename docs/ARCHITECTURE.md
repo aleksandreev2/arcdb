@@ -123,7 +123,7 @@ This is intentionally simple. OCI remains the heavy compute origin.
 
 ## 7. Storage ownership target
 
-Current transition status: Phase 2A–2D writes are complete for schema v3. Phase 3 provides `STATE_READ_BACKEND=legacy|sqlite` for users, user state, collections, uploads, custom metadata and allowlist. Phase 3B can additionally read SQLite alongside legacy-served requests and emit payload-free comparison events. `legacy` remains the default; CI compares real authenticated API/HTML responses from simultaneous legacy/SQLite Flask processes and requires successful runtime shadow comparisons for every domain. SQLite is not production-primary before live reconciliation, bounded canary traffic and observation.
+Current transition status: Phase 2A–2D writes are complete for schema v3. Phase 3 provides `STATE_READ_BACKEND=legacy|sqlite` for users, user state, collections, uploads, custom metadata and allowlist. Phase 3B can additionally read SQLite alongside legacy-served requests and emit payload-free comparison events. An explicit-path read-only preflight now produces a sanitized, non-authorizing health/parity/source-stability report for production reconciliation. `legacy` remains the default; CI compares real authenticated API/HTML responses from simultaneous legacy/SQLite Flask processes and requires successful runtime shadow comparisons for every domain. SQLite is not production-primary before live reconciliation, bounded canary traffic and observation.
 
 ### SQLite WAL
 

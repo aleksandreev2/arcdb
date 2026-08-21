@@ -328,9 +328,23 @@ Status: feature-flagged backends and legacy-serving runtime shadow observation i
 - `STATE_READ_SHADOW_STRICT=0` records mismatch/error events without breaking authoritative legacy reads;
 - strict mode fails CI on any mismatch or SQLite error;
 - match/mismatch/error events contain only domain, counter and error type; user payloads and auth secrets are never logged;
-- successful events are rate-limited by `STATE_READ_SHADOW_REPORT_EVERY` after the first match per process/domain.
+- successful events are rate-limited by `STATE_READ_SHADOW_REPORT_EVERY` after the first match per process/domain;
+- `scripts/verify_read_cutover_readiness.py` requires explicit metadata/SQLite paths and performs a read-only single-snapshot database health/full-parity check;
+- the preflight recursively fingerprints legacy metadata before and after verification, reports only aggregate counts/checks and refuses to overwrite an existing report;
+- a passing preflight report keeps both bounded-canary and primary-read authorization false pending operator review and live observation.
 
 Production reconciliation, actual observation and primary-read promotion remain pending. Retain legacy files and rollback controls throughout. Shadow comparison is valid only with `STATE_READ_BACKEND=legacy`; enabling it alongside `sqlite` fails closed to prevent an ambiguous rollout configuration.
+
+Example after production paths have been discovered and the verified shadow exists:
+
+```bash
+python scripts/verify_read_cutover_readiness.py \
+  --meta-dir /explicit/live/metadata \
+  --db /explicit/live/arcdb.sqlite3 \
+  --report /new/private/audit/readiness-report.json
+```
+
+Run it while writers are quiesced or during a controlled quiet window. A `source_changed` failure means the result is not a valid cutover checkpoint; retry only after the write source is stable. Review `unknown_files` against the live inventory before enabling runtime shadow observation.
 
 Do not combine a new dual-write domain and read-source cutover in one change.
 

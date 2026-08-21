@@ -9,7 +9,7 @@ printf '\n'; lscpu 2>/dev/null | sed -n '1,30p' || true
 printf '\n'; free -h || true
 
 section "BLOCK DEVICES"
-lsblk -o NAME,SIZE,TYPE,FSTYPE,FSVER,MOUNTPOINTS,MODEL,SERIAL 2>/dev/null || lsblk || true
+lsblk -o NAME,SIZE,TYPE,FSTYPE,FSVER,MOUNTPOINTS,MODEL 2>/dev/null || lsblk || true
 
 section "FILESYSTEMS"
 df -hT || true
@@ -29,7 +29,7 @@ find /home/ubuntu -maxdepth 3 -type d \
   -print 2>/dev/null | sort | head -n 300 || true
 
 section "WEB / TUNNEL PROCESSES"
-ps -eo user,pid,ppid,%cpu,%mem,etime,args | \
+ps -eo user,pid,ppid,%cpu,%mem,etime,comm | \
   grep -Ei 'gallery_app|flask|gunicorn|python|cloudflared|nginx' | grep -v grep || true
 
 section "RELEVANT SYSTEMD SERVICES"
@@ -44,4 +44,5 @@ section "LISTENING PORTS"
 ss -lntp 2>/dev/null || true
 
 section "DONE"
-echo "Inventory complete. Review the output before sharing it publicly."
+echo "Inventory complete. Command lines and block-device serials were intentionally omitted."
+echo "Review paths and infrastructure details before sharing the output publicly."

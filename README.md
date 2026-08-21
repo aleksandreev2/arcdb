@@ -119,6 +119,17 @@ STATE_READ_SHADOW_REPORT_EVERY=1000
 
 The first successful comparison per domain and then every configured interval are logged as payload-free events; mismatches and SQLite errors are always logged. Strict mode is enabled in CI so any divergence fails visibly. Both explicit backends and runtime shadow comparison are exercised against identical seeded API flows in CI. SQLite is not the production default or source of truth; production enablement still requires live reconciliation, bounded observation and a separate canary.
 
+Before any production observation or canary, run the read-only preflight with explicit discovered paths:
+
+```bash
+python scripts/verify_read_cutover_readiness.py \
+  --meta-dir /explicit/live/metadata \
+  --db /explicit/live/arcdb.sqlite3 \
+  --report /new/private/path/readiness-report.json
+```
+
+It requires the core legacy files, verifies every schema-v3 domain in one read-only SQLite snapshot, runs schema/quick/integrity/foreign-key checks and proves the recursive legacy source hashes stayed stable. The optional report contains only counts/check results and refuses overwrite. A passing report explicitly does **not** authorize SQLite canary or primary reads.
+
 Local safe migration test:
 
 ```bat

@@ -72,7 +72,8 @@ Completed:
 - full `users.json` <-> SQLite parity verification, including an empty document;
 - strict local dual-write verification and end-to-end CI;
 - Phase 3 feature-flagged read adapters plus simultaneous legacy/SQLite API parity;
-- Phase 3B legacy-serving SQLite shadow comparison with process-local counters, payload-free events and strict all-domain CI.
+- Phase 3B legacy-serving SQLite shadow comparison with process-local counters, payload-free events and strict all-domain CI;
+- read-only cutover readiness preflight with full parity, SQLite health checks, recursive source-hash stability and a payload-free report that cannot authorize cutover by itself.
 
 Still pending:
 
@@ -84,7 +85,7 @@ Still pending:
 - Telethon service split;
 - R2/static edge migration.
 
-## Current state ownership after Phase 2D
+## Current state ownership during Phase 3B
 
 ```text
 request
@@ -210,15 +211,17 @@ At minimum:
 - keep Runtime Dual Write CI green while Phase 2 is active;
 - for storage changes, add parity/round-trip/integrity tests;
 - for any migration, prove source files were not modified;
+- keep the explicit read-cutover preflight green and its report free of paths, identities and payloads;
 - update docs when architecture, storage ownership or rollout state changes.
 
 ## Next ordered work
 
-1. Reconcile live production and run the verified migration/full-parity protocol.
-2. Enable legacy-serving shadow comparison for bounded internal traffic and observe payload-free match/mismatch/error events.
-3. Enable SQLite reads only for a bounded internal canary with immediate rollback to `legacy`.
-4. Make SQLite primary reads only after stable observation.
-5. Stop legacy writes domain-by-domain later; keep rollback exports and legacy archives.
+1. Obtain the live inventory/sanitized baseline and run the explicit read-only readiness preflight against discovered production paths.
+2. Review unknown-file counts and reconcile any live code/config differences.
+3. Enable legacy-serving shadow comparison for bounded internal traffic and observe payload-free match/mismatch/error events.
+4. Enable SQLite reads only for a bounded internal canary with immediate rollback to `legacy`.
+5. Make SQLite primary reads only after stable observation.
+6. Stop legacy writes domain-by-domain later; keep rollback exports and legacy archives.
 
 Do not jump directly to read cutover while write domains are incomplete.
 

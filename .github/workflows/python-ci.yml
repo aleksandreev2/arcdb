@@ -30,6 +30,7 @@ jobs:
           arcdb/storage/safe_migration.py
           arcdb/storage/runtime_state.py
           arcdb/storage/runtime_reads.py
+          arcdb/storage/readiness.py
           arcdb/storage/state_parity.py
           scripts/dev_bootstrap.py
           scripts/dev_seed.py
@@ -38,6 +39,7 @@ jobs:
           scripts/verify_migration_backup.py
           scripts/export_sqlite_to_legacy.py
           scripts/verify_state_parity.py
+          scripts/verify_read_cutover_readiness.py
           scripts/runtime_overlays.py
           scripts/materialize_baseline.py
           tests/make_seed_fixtures.py
@@ -45,6 +47,7 @@ jobs:
           tests/test_safe_migration.py
           tests/test_runtime_state.py
           tests/test_runtime_reads.py
+          tests/test_readiness.py
           tests/test_runtime_users.py
           tests/test_runtime_metadata.py
           tests/test_runtime_overlays.py
@@ -187,10 +190,27 @@ jobs:
           tests/test_safe_migration.py
           tests/test_runtime_state.py
           tests/test_runtime_reads.py
+          tests/test_readiness.py
           tests/test_runtime_users.py
           tests/test_runtime_metadata.py
           tests/test_runtime_overlays.py
           tests/test_dev_seed.py
+      - name: Run read-only cutover readiness preflight
+        run: |
+          PYTHONPATH=. .venv/bin/python scripts/verify_read_cutover_readiness.py \
+            --meta-dir data/metadata \
+            --db data/arcdb.sqlite3 \
+            --report data/readiness-report.json
+          .venv/bin/python - <<'PY'
+          import json
+          report = json.load(open('data/readiness-report.json', encoding='utf-8'))
+          assert report['status'] == 'preflight_passed', report
+          assert report['legacy_sources']['stable_during_preflight'] is True, report
+          assert report['database']['quick_check'] == 'ok', report
+          assert report['database']['integrity_check'] == 'ok', report
+          assert report['decision']['bounded_canary_authorized'] is False, report
+          assert report['decision']['primary_read_authorized'] is False, report
+          PY
       - name: Checkpoint current local shadow before explicit migration test
         run: |
           PYTHONPATH=. .venv/bin/python - <<'PY'
