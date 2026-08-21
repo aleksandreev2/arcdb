@@ -22,7 +22,7 @@ Confirmed:
 
 Strongly indicated by archived code:
 
-- Cloudflare Tunnel/Cloudflare-aware origin handling.
+- Cloudflare Tunnel/Cloudflare-aware origin handling;
 - local JSON/CSV application state;
 - local EPUB files and unpacked reader trees;
 - synchronous packaging/ZIP work in request handlers;
@@ -40,7 +40,7 @@ Unknown until production inventory is supplied:
 
 ## Local development state
 
-Local Windows workflow:
+Windows workflow:
 
 ```bat
 git pull
@@ -53,8 +53,11 @@ The launcher:
 - installs dependencies when requirements change;
 - creates local `.env`;
 - reconstructs the archived baseline into `.runtime/source`;
+- applies fail-closed tracked runtime overlays;
 - creates a local dev account;
 - if the local library is empty and EPUB fixtures are available, seeds once;
+- ensures a compatible SQLite shadow exists;
+- verifies full `user_data.json`/SQLite semantic parity;
 - starts the site on `127.0.0.1:5004`.
 
 Explicit reseed:
@@ -63,7 +66,7 @@ Explicit reseed:
 seed-dev.bat
 ```
 
-Fixtures are local-only and ignored by Git.
+Fixtures and generated data are local-only and ignored by Git.
 
 ## Current storage problem
 
@@ -78,20 +81,44 @@ Mutable state is stored in files such as:
 
 Frequent operations can read the complete JSON document, mutate a small value, rewrite the complete file and fsync. This does not scale well and makes safe multi-process serving difficult.
 
-## Current migration direction
+## Current SQLite migration status
 
 SQLite WAL on the OCI Block Volume is the planned mutable-state database for the single-VM architecture.
 
-Why SQLite now:
+Implemented in repository:
 
-- one primary VM;
-- simple operation and backup;
-- strong transactional guarantees;
-- removes whole-file JSON writes;
-- no separate database service required;
-- straightforward future migration to PostgreSQL if the architecture ever becomes multi-node/high-write.
+- schema v2;
+- non-destructive JSON -> SQLite initial migration;
+- candidate-first promotion and rollback backups;
+- SHA-256 legacy snapshots;
+- round-trip/integrity/FK checks;
+- SQLite -> legacy reverse export;
+- runtime Phase 2A dual-write for hot per-novel user state;
+- full user-state parity checker;
+- real route-level dual-write CI.
 
-The repository currently contains a shadow SQLite schema/importer. Flask has NOT yet been switched to SQLite as source of truth.
+SQLite is **not** the read source yet.
+
+Current write flow for covered user-state mutations:
+
+```text
+request
+  -> legacy JSON write succeeds
+  -> changed record(s) mirrored to SQLite
+  -> local/CI immediate verification
+```
+
+Covered Phase 2A mutations:
+
+- progress;
+- status;
+- last-read state;
+- hidden state;
+- download counters;
+- bulk user-state removal;
+- embedded collection membership on affected records.
+
+Dedicated collection metadata/routes, uploads/custom metadata/allowlist and users/auth are still pending dual-write.
 
 ## Non-negotiable migration rule
 
@@ -110,7 +137,25 @@ legacy files
     -> legacy files remain preserved
 ```
 
-Runtime cutover then proceeds via dual-write and parity testing. Legacy cleanup, if ever performed, is a separate later operation requiring explicit approval.
+Production dual-write is then enabled explicitly by domain while reads remain legacy-first. Legacy cleanup, if ever performed, is a separate later operation requiring explicit approval.
+
+## Local dual-write behavior
+
+Local defaults enable:
+
+```text
+STATE_DUAL_WRITE=1
+STATE_DUAL_WRITE_STRICT=1
+STATE_DUAL_WRITE_VERIFY=1
+```
+
+If local state is reseeded and the shadow becomes stale, bootstrap can safely rebuild it because JSON is still authoritative. It refuses automatic rebuild outside local development.
+
+Manual full parity check:
+
+```bat
+.venv\Scripts\python.exe scripts\verify_state_parity.py
+```
 
 ## Important source problems already identified
 
@@ -148,14 +193,14 @@ Browser
 
 Avoid a full rewrite. Keep Flask and preserve API/UI behavior while extracting responsibilities gradually.
 
-## Next ordered work
+## Current next ordered work
 
-1. Harden migration safety and backup verification.
-2. Add state repository abstraction.
-3. Dual-write hot state to JSON + SQLite.
-4. Add automatic parity checks.
-5. Enable SQLite reads behind a feature flag.
-6. Switch SQLite to source of truth after observation.
+1. Complete collection metadata/membership dual-write.
+2. Dual-write uploads/custom metadata/allowlist.
+3. Dual-write users/auth with dedicated auth tests.
+4. Add SQLite read-source feature flag and comprehensive API parity tests.
+5. Make SQLite primary read source only after stable observation.
+6. Stop JSON writes domain-by-domain; preserve legacy/export rollback paths.
 7. Optimize upload fsync and EPUB streaming.
 8. Move packaging to async jobs.
 9. Split Telethon into its own service.
@@ -165,9 +210,9 @@ Avoid a full rewrite. Keep Flask and preserve API/UI behavior while extracting r
 
 ## Where to read next
 
-- `AGENTS.md` — rules for AI/contributors.
+- `AGENTS.md` — mandatory rules and exact current status.
 - `docs/ARCHITECTURE.md` — component-level architecture.
-- `docs/STORAGE_MIGRATION.md` — migration phases.
+- `docs/STORAGE_MIGRATION.md` — migration phases and runtime flags.
 - `docs/PRODUCTION_SAFETY.md` — backup/cutover/rollback rules.
 - `docs/DATA_MODEL.md` — files and SQLite ownership.
 - `docs/ROADMAP.md` — implementation sequence.

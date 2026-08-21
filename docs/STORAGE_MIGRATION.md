@@ -6,7 +6,7 @@ Move hot mutable state away from whole-file JSON rewrites while keeping the curr
 
 ## Non-destructive invariant
 
-Legacy state is **not deleted or modified** by the migration tool.
+Legacy state is **not deleted or modified by migration tooling**.
 
 Migration and cleanup are separate operations. Even after SQLite becomes source of truth, legacy files must remain preserved for an agreed retention period. Any future deletion requires an explicit, separate decision.
 
@@ -14,7 +14,7 @@ Migration and cleanup are separate operations. Even after SQLite becomes source 
 
 Status: implemented.
 
-SQLite is introduced as a shadow state database. The running Flask baseline still reads/writes the legacy JSON files.
+SQLite is a shadow state database. During Phase 2 the running Flask app still reads legacy JSON and writes JSON first.
 
 Local target path:
 
@@ -30,9 +30,12 @@ Connection defaults:
 - foreign keys enabled;
 - SQLite file intended for OCI Block Volume in production.
 
-Schema v1 normalizes:
+## Schema v2
+
+Current normalized state:
 
 - `users`;
+- `user_state_users`;
 - `user_novel_state`;
 - `collections`;
 - `collection_items`;
@@ -40,11 +43,19 @@ Schema v1 normalizes:
 - `custom_metadata`;
 - `allowed_emails`.
 
-Each migrated record also keeps its original JSON payload during the transition. `legacy_documents` stores imported source-document representations for audit and round-trip verification.
+`user_state_users` exists so a top-level legacy user bucket such as:
 
-## Safe migration algorithm
+```json
+{"user@example.com": {}}
+```
 
-The migration tool now uses this sequence:
+can survive both initial migration and runtime deletion of the user's last per-novel row. This avoids relying on an old imported document snapshot to preserve an empty live container.
+
+Each migrated record still keeps its original JSON payload during the transition. `legacy_documents` stores imported source-document representations for audit and migration round-trip verification.
+
+## Safe initial migration algorithm
+
+The migration tool uses this sequence:
 
 ```text
 1. discover all files under META_DIR + explicit CSV/state files
@@ -63,11 +74,11 @@ The migration tool now uses this sequence:
 14. if a prior SQLite target exists, preserve it before promotion
 ```
 
-If source state changes while the candidate is being built, promotion fails closed. This is important for production: prefer a short maintenance/read-only window for the first import, or use a later consistent dual-write protocol.
+If source state changes while the candidate is being built, promotion fails closed. On production prefer a short maintenance/read-only window for the first import, or use a deliberately designed consistent snapshot protocol.
 
 ## Backup scope
 
-The snapshot is intentionally broader than schema v1.
+The snapshot is intentionally broader than the normalized schema.
 
 It includes:
 
@@ -76,11 +87,9 @@ It includes:
 - translated CSV index;
 - RAW master CSV index.
 
-Therefore legacy files that SQLite v1 does not yet understand are still preserved in the migration backup.
+Therefore unknown or production-only legacy files are still preserved even before they have normalized tables.
 
-Examples may include IP/exemption state, community/download-related state or other future/production-only metadata files discovered under `META_DIR`.
-
-## Running locally
+## Running the initial migration locally
 
 After dev data is seeded:
 
@@ -88,15 +97,11 @@ After dev data is seeded:
 .venv\Scripts\python.exe scripts\migrate_state_to_sqlite.py --verify
 ```
 
-Verification is mandatory now; `--verify` remains accepted for compatibility/clarity.
-
 Production-oriented strict check:
 
 ```bash
 python scripts/migrate_state_to_sqlite.py --verify --require-core
 ```
-
-`--require-core` refuses to continue if core users/user_data/collections source files are unexpectedly missing.
 
 Prepare/verify without changing the current SQLite target:
 
@@ -104,11 +109,9 @@ Prepare/verify without changing the current SQLite target:
 python scripts/migrate_state_to_sqlite.py --verify --require-core --no-promote
 ```
 
-This leaves the verified candidate beside the target and records its path/hash in the timestamped manifest.
-
 ## Migration artifacts
 
-Default local layout:
+Typical local layout:
 
 ```text
 data/
@@ -123,8 +126,6 @@ data/
             ├── arcdb.sqlite3.verified-copy
             └── arcdb.sqlite3.pre-migration-original
 ```
-
-When no previous SQLite target exists, `previous-sqlite/` may not exist.
 
 The manifest records source paths, backup paths, file sizes, SHA-256 values, candidate/target information, row counts and SQLite verification results.
 
@@ -141,32 +142,126 @@ Before promotion:
 5. target is verified after promotion;
 6. if post-promotion verification fails, the previous original is restored automatically when available.
 
-This intentionally uses extra disk space in exchange for rollback safety.
+Local bootstrap has one additional convenience path: when a **local-development-only shadow** is stale after reseeding, it first checks that no local ArchiveDB server is listening, checkpoints the shadow WAL, preserves any remaining sidecars in `data/shadow-sidecar-backups/`, then invokes the same safe migration. This automatic handling is not a production procedure.
 
-## Source mutation guarantee
+## Phase 2 — runtime dual-write
 
-The migration tool never writes to legacy metadata/CSV source files.
+Status: in progress. Phase 2A is implemented.
 
-It fingerprints source files before candidate creation and re-checks them before promotion. It also compares the set of files under the metadata snapshot scope so newly created or removed unknown metadata files cause promotion to abort.
+### Write order
 
-## Phase 2 — runtime dual-write adapter
+For covered state mutations:
 
-Next planned stage.
+```text
+Flask route
+   -> mutate legacy in memory
+   -> atomic legacy JSON write succeeds
+   -> compute changed per-novel records
+   -> SQLite transaction mirrors those records
+   -> optional immediate SQLite verification
+```
 
-Add a state repository interface and route writes through it, domain by domain:
+JSON is deliberately written first and remains the read/source-of-truth during this phase.
 
-1. reading progress/status/hidden/download counters;
-2. collections/memberships;
-3. uploads/custom metadata/allowlist;
-4. users/auth with dedicated tests.
+If SQLite fails after JSON succeeds:
 
-For a transition period writes go to both SQLite and legacy JSON. Reads remain JSON-first.
+- local strict mode raises so tests/development notice immediately;
+- JSON remains the authoritative successful write;
+- the next local startup detects full parity failure and can rebuild the shadow safely from JSON;
+- production should log/alert on the mismatch and keep serving the legacy source until investigated.
 
-After each supported write in development/CI, compare the resulting semantic state. Production should log mismatches rather than silently choosing one copy.
+### Phase 2A covered mutations
+
+Current runtime wiring mirrors changes triggered by:
+
+- `/api/user_progress`;
+- `/api/user_status`;
+- `/api/user_hide`;
+- `/api/bulk_remove`;
+- local EPUB download counter updates;
+- Telegram download counter updates.
+
+For each changed per-novel record it mirrors:
+
+- `status`;
+- `progress`;
+- `last_read`;
+- `dl` -> normalized download count;
+- `last_dl`;
+- `hidden`;
+- complete raw JSON payload;
+- embedded collection memberships for that record.
+
+This does **not** mean collection routes are fully migrated. Collection metadata and every membership mutation path are Phase 2B.
+
+### Feature flags
+
+Local defaults:
+
+```text
+STATE_DUAL_WRITE=1
+STATE_DUAL_WRITE_STRICT=1
+STATE_DUAL_WRITE_VERIFY=1
+STATE_DUAL_WRITE_LOG_SUCCESS=0
+```
+
+Semantics:
+
+- `STATE_DUAL_WRITE` — enable shadow writes;
+- `STATE_DUAL_WRITE_STRICT` — re-raise mirror failures after the JSON write; intended for local/CI, not a substitute for production monitoring;
+- `STATE_DUAL_WRITE_VERIFY` — re-read and compare affected SQLite rows immediately;
+- `STATE_DUAL_WRITE_LOG_SUCCESS` — optional noisy success logging.
+
+Production dual-write remains opt-in and must not be enabled until a verified production SQLite shadow exists.
+
+### Full parity check
+
+Run:
+
+```bat
+.venv\Scripts\python.exe scripts\verify_state_parity.py
+```
+
+It opens SQLite read-only and verifies the entire semantic `user_data.json` document against the SQLite shadow, including empty user buckets and raw per-record payloads.
+
+Local `start.bat` performs this parity check before starting. A compatible equal shadow is reused. A missing/stale local shadow is rebuilt safely from JSON. Automatic rebuild is refused outside `ARCHIVEDB_LOCAL_DEV=1`.
+
+### Runtime overlay mechanism
+
+The Flask source is still reconstructed from a verified compressed baseline. Until it becomes a normally tracked package, `scripts/runtime_overlays.py` applies the dual-write hook during materialization.
+
+The overlay is intentionally fail-closed:
+
+- exact code markers must match once;
+- unexpected baseline changes fail materialization;
+- overlay file hash participates in `.runtime.sha256`;
+- this is transitional plumbing, not the target architecture.
+
+### Phase 2B — collections
+
+Next scope:
+
+- collection create/rename/delete;
+- every add/remove membership route;
+- bulk operations;
+- full `collections.json` + membership parity.
+
+### Phase 2C — uploads/custom metadata/allowlist
+
+Then mirror:
+
+- upload metadata/approval state;
+- custom metadata;
+- allowlist changes;
+- corresponding admin mutations.
+
+### Phase 2D — users/auth
+
+Migrate auth last within the write phase with dedicated registration/login/verification/reset tests.
 
 ## Phase 3 — SQLite read comparison/cutover
 
-After dual-write parity is stable:
+Only after sufficient write-domain coverage:
 
 - add read-source feature flag;
 - run seeded API parity tests;
@@ -174,6 +269,8 @@ After dual-write parity is stable:
 - observe mismatches/errors;
 - switch primary reads to SQLite;
 - retain legacy files and rollback controls.
+
+Do not combine a new dual-write domain and read-source cutover in one change.
 
 ## Phase 4 — stop whole-file JSON writes
 
@@ -184,34 +281,32 @@ Only after SQLite reads are stable:
 - archive legacy files read-only;
 - do not delete them as part of the cutover.
 
-## Not part of state migration v1
+## Not part of this state migration
 
-The following must remain separate migrations/projects:
+The following remain separate migrations/projects:
 
 - novel library index;
 - EPUB/chapter files;
-- Telegram state;
+- Telegram session state;
 - packaging jobs;
-- rate-limit buckets;
+- process-local rate-limit buckets;
 - download event logs not represented in current state tables;
 - Cloudflare/R2 object migration;
 - filesystem cleanup/reorganization.
 
-Do not mix these with the first user-state production cutover.
-
-## Production checklist
-
-Before first production migration:
+## Production checklist before enabling shadow writes
 
 - reconcile repository baseline with live code/config;
 - inventory real source paths;
 - identify all metadata/state files;
 - check free disk space;
 - create OCI Block Volume backup/snapshot when practical;
-- stop or quiesce writers for consistent initial snapshot;
-- run migration with `--require-core`;
-- retain backup manifest and all legacy files;
-- smoke test application;
-- do not enable SQLite reads until dual-write/parity stages are ready.
+- stop/quiesce writers for the initial consistent snapshot;
+- run initial migration with `--require-core`;
+- verify backup manifest and SQLite checks;
+- keep `STATE_DUAL_WRITE=0` until the shadow is verified and runtime code is reconciled with live production;
+- enable dual-write for a bounded domain first;
+- monitor mismatch/error logs;
+- do not enable SQLite reads yet.
 
-See `docs/PRODUCTION_SAFETY.md` for the full operational protocol.
+See `docs/PRODUCTION_SAFETY.md` for the operational protocol.

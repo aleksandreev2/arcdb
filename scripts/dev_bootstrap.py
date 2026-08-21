@@ -6,6 +6,7 @@ import os
 import secrets
 import shutil
 import socket
+import sqlite3
 import subprocess
 import sys
 import time
@@ -179,6 +180,135 @@ def auto_seed_library_if_empty(py: Path, child_env: dict[str, str]) -> None:
     print("[setup] Local library seed completed.")
 
 
+def resolve_local_path(raw: str | None, fallback: Path) -> Path:
+    path = Path(raw) if raw else fallback
+    if not path.is_absolute():
+        path = ROOT / path
+    return path.resolve()
+
+
+def ensure_repo_pythonpath(child_env: dict[str, str]) -> None:
+    existing = child_env.get("PYTHONPATH", "")
+    root_text = str(ROOT)
+    parts = [part for part in existing.split(os.pathsep) if part]
+    if root_text not in parts:
+        child_env["PYTHONPATH"] = root_text + (os.pathsep + existing if existing else "")
+
+
+def ensure_local_dual_write_defaults(child_env: dict[str, str]) -> None:
+    if child_env.get("ARCHIVEDB_LOCAL_DEV") != "1":
+        return
+    child_env.setdefault("STATE_DUAL_WRITE", "1")
+    child_env.setdefault("STATE_DUAL_WRITE_STRICT", "1")
+    child_env.setdefault("STATE_DUAL_WRITE_VERIFY", "1")
+
+
+def _local_server_listening(env: dict[str, str]) -> bool:
+    host = env.get("HOST", "127.0.0.1")
+    if host in {"0.0.0.0", "::", "localhost"}:
+        host = "127.0.0.1"
+    try:
+        port = int(env.get("PORT", "5004"))
+        with socket.create_connection((host, port), timeout=0.2):
+            return True
+    except (OSError, ValueError):
+        return False
+
+
+def prepare_stale_local_shadow(db_path: Path, child_env: dict[str, str]) -> None:
+    """Checkpoint a stale local-only shadow before the safe migration replaces it."""
+    if child_env.get("ARCHIVEDB_LOCAL_DEV") != "1":
+        raise RuntimeError(
+            "SQLite shadow parity failed outside local development. "
+            "Automatic rebuild is disabled; run the production migration protocol manually."
+        )
+    if _local_server_listening(child_env):
+        raise RuntimeError(
+            "Another local ArchiveDB server is already listening. Stop it before rebuilding the SQLite shadow."
+        )
+    if not db_path.is_file():
+        return
+
+    conn = sqlite3.connect(str(db_path), timeout=5.0)
+    try:
+        checkpoint = conn.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+    finally:
+        conn.close()
+    if checkpoint and int(checkpoint[0]) != 0:
+        raise RuntimeError(
+            "SQLite shadow WAL is busy. Stop every local ArchiveDB process and run start.bat again."
+        )
+
+    sidecars = [
+        path
+        for path in (Path(str(db_path) + "-wal"), Path(str(db_path) + "-shm"))
+        if path.exists()
+    ]
+    if not sidecars:
+        return
+
+    stamp = time.strftime("%Y%m%d-%H%M%S") + f"-{os.getpid()}"
+    backup_dir = db_path.parent / "shadow-sidecar-backups" / stamp
+    backup_dir.mkdir(parents=True, exist_ok=False)
+    for sidecar in sidecars:
+        backup = backup_dir / sidecar.name
+        shutil.copy2(sidecar, backup)
+        if sidecar.stat().st_size != backup.stat().st_size:
+            raise RuntimeError(f"Local SQLite sidecar backup size mismatch: {sidecar}")
+        sidecar.unlink()
+    print(f"[setup] Preserved stale local SQLite sidecars: {backup_dir}")
+
+
+def ensure_shadow_state_ready(py: Path, child_env: dict[str, str]) -> None:
+    if child_env.get("STATE_DUAL_WRITE", "0") != "1":
+        return
+
+    db_path = resolve_local_path(
+        child_env.get("SQLITE_DB_PATH"), ROOT / "data" / "arcdb.sqlite3"
+    )
+    verify_cmd = [str(py), str(ROOT / "scripts" / "verify_state_parity.py")]
+    stale_existing = False
+    if db_path.is_file():
+        result = subprocess.run(
+            verify_cmd,
+            cwd=ROOT,
+            env=child_env,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+        if result.returncode == 0:
+            print("[setup] " + result.stdout.strip())
+            return
+        stale_existing = True
+        print("[setup] Existing SQLite shadow is stale or incompatible; rebuilding safely.")
+        if result.stdout.strip():
+            print("[setup] " + result.stdout.strip())
+    else:
+        print("[setup] SQLite shadow database is missing; creating it from legacy state.")
+
+    if child_env.get("ARCHIVEDB_LOCAL_DEV") != "1":
+        raise RuntimeError(
+            "Automatic SQLite shadow creation/rebuild is local-development only. "
+            "Use scripts/migrate_state_to_sqlite.py with the production safety procedure."
+        )
+    if stale_existing:
+        prepare_stale_local_shadow(db_path, child_env)
+
+    subprocess.run(
+        [
+            str(py),
+            str(ROOT / "scripts" / "migrate_state_to_sqlite.py"),
+            "--verify",
+        ],
+        cwd=ROOT,
+        env=child_env,
+        check=True,
+    )
+    subprocess.run(verify_cmd, cwd=ROOT, env=child_env, check=True)
+    print("[setup] SQLite shadow state is ready for dual-write.")
+
+
 def browser_url(env: dict[str, str]) -> str:
     host = env.get("HOST", "127.0.0.1")
     if host in {"0.0.0.0", "::"}:
@@ -260,10 +390,13 @@ def main() -> int:
 
     child_env = os.environ.copy()
     child_env.update(env_values)
+    ensure_repo_pythonpath(child_env)
+    ensure_local_dual_write_defaults(child_env)
     ensure_local_directories(child_env)
     if args.auto_seed_if_empty:
         auto_seed_library_if_empty(py, child_env)
     seed_dev_account(py, child_env)
+    ensure_shadow_state_ready(py, child_env)
 
     if args.setup_only:
         print("[setup] Local development environment is ready.")

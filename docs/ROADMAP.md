@@ -15,57 +15,97 @@ Status: completed.
 
 ## Phase 1 — migration safety + SQLite shadow foundation
 
-Status: in progress / mostly complete.
+Status: completed for the current state scope.
 
-- SQLite WAL schema.
-- JSON -> SQLite importer.
-- round-trip tests.
-- candidate-first safe migration.
-- immutable/checksummed legacy snapshots.
-- integrity/foreign-key checks.
+Implemented:
+
+- SQLite WAL schema;
+- JSON -> SQLite importer;
+- round-trip tests;
+- candidate-first safe migration;
+- immutable/checksummed legacy snapshots;
+- integrity/foreign-key checks;
+- previous-SQLite preservation and rollback;
+- SQLite -> legacy reverse export;
 - project documentation/handoff rules.
 
-Exit criteria:
+Production execution is still pending because real OCI paths/live source must be reconciled first.
 
-- source files proven byte-identical before/after migration;
-- backup manifest verified;
-- SQLite candidate passes all checks;
-- rerunning migration is safe;
-- existing SQLite target is preserved, never overwritten without backup.
+## Phase 2 — runtime state dual-write
 
-## Phase 2 — runtime state adapter + dual-write
+Status: in progress.
 
-Goal: eliminate direct storage assumptions from Flask routes without changing behavior.
+### 2A — per-novel user state
 
-Order:
+Status: implemented and covered by dedicated runtime CI.
 
-1. introduce repository/storage interface;
-2. route user progress/status writes through adapter;
-3. dual-write JSON + SQLite;
-4. add parity checks and mismatch logging;
-5. migrate collections/memberships;
-6. migrate download counters/hidden flags;
-7. migrate uploads metadata/custom metadata/allowlist;
-8. migrate users/auth last, with dedicated auth tests.
+Current mirrored mutations:
 
-Reads remain legacy-first initially.
+- reading progress;
+- reading status;
+- `last_read`;
+- hidden flag;
+- download count/last-download fields;
+- bulk user-state removals;
+- embedded collection membership changes on an affected record.
 
-Exit criteria:
+Current ownership:
 
-- every supported write produces equivalent JSON/SQLite state;
-- CI covers concurrent/repeated/idempotent writes;
-- no user-visible API changes.
+```text
+JSON = read source + primary write
+SQLite = verified shadow write
+```
+
+Local development uses strict verification. Full `user_data.json` parity is checked before startup and after end-to-end runtime API tests.
+
+### 2B — collections
+
+Next.
+
+- create collection;
+- rename collection;
+- delete collection;
+- add/remove membership through every collection route;
+- bulk collection operations;
+- compare `collections.json` plus embedded memberships against SQLite.
+
+### 2C — uploads/custom metadata/allowlist
+
+- upload metadata and approval transitions;
+- custom metadata changes;
+- allowlist changes;
+- admin mutation tests.
+
+### 2D — users/auth
+
+Do last within write migration because auth has higher correctness/security risk.
+
+- registration/verification;
+- password hashes;
+- reset-code state;
+- account/access changes;
+- dedicated login/reset/admin tests.
+
+Phase 2 exit criteria:
+
+- every supported mutable-state write produces equivalent JSON/SQLite state;
+- CI covers repeated/idempotent and important route-level writes;
+- no user-visible API changes;
+- mismatch handling is explicit and observable.
 
 ## Phase 3 — SQLite read cutover
+
+Do not start until Phase 2 write coverage is complete enough for the target domain.
 
 1. add feature flag for state read source;
 2. run API parity tests using identical seeded state;
 3. test login, library, reader, progress, collections, uploads/admin flows;
 4. enable SQLite reads in local dev;
-5. deploy to production shadow/internal traffic when possible;
-6. observe mismatch/error metrics;
-7. promote SQLite as primary read source;
-8. keep legacy files/rollback path.
+5. compare responses against legacy reads;
+6. deploy only after production shadow data is verified;
+7. observe mismatch/error metrics;
+8. promote SQLite as primary read source;
+9. keep legacy files and rollback controls.
 
 Exit criteria:
 
@@ -175,6 +215,24 @@ After process-local state is removed/split:
 - adjust VPU tier only if measured I/O remains a bottleneck;
 - add request/job timing metrics;
 - tune caching based on hit rates, not guesses.
+
+## Current immediate order
+
+```text
+1. finish collections dual-write
+2. uploads/custom metadata/allowlist dual-write
+3. users/auth dual-write
+4. SQLite read feature flag + API parity
+5. SQLite primary reads
+6. stop legacy writes domain-by-domain
+7. immediate upload/EPUB I/O fixes
+8. async packager
+9. Telethon split
+10. persistent library index
+11. frontend/static split
+12. R2/Cloudflare optimization
+13. production rollout after live reconciliation
+```
 
 ## Explicit non-goals for now
 
