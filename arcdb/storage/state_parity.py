@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
 from typing import Any
 
 from .legacy_import import export_user_data
 from .runtime_state import ShadowStateError
-from .sqlite_db import SCHEMA_VERSION, connect_db
+from .sqlite_db import SCHEMA_VERSION
 
 
 def load_legacy_user_data(path: Path) -> dict[str, Any]:
@@ -18,12 +19,18 @@ def load_legacy_user_data(path: Path) -> dict[str, Any]:
     return data
 
 
+def _connect_readonly(db_path: Path) -> sqlite3.Connection:
+    conn = sqlite3.connect(db_path.resolve().as_uri() + "?mode=ro", uri=True, timeout=5.0)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
 def verify_user_data_parity(*, user_data_path: Path, db_path: Path) -> dict[str, int]:
     legacy = load_legacy_user_data(user_data_path)
     if not db_path.is_file():
         raise ShadowStateError(f"SQLite shadow database is missing: {db_path}")
 
-    conn = connect_db(db_path)
+    conn = _connect_readonly(db_path)
     try:
         version = conn.execute(
             "SELECT value FROM schema_meta WHERE key='schema_version'"
