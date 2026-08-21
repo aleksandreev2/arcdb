@@ -179,6 +179,69 @@ def auto_seed_library_if_empty(py: Path, child_env: dict[str, str]) -> None:
     print("[setup] Local library seed completed.")
 
 
+def resolve_local_path(raw: str | None, fallback: Path) -> Path:
+    path = Path(raw) if raw else fallback
+    if not path.is_absolute():
+        path = ROOT / path
+    return path.resolve()
+
+
+def ensure_repo_pythonpath(child_env: dict[str, str]) -> None:
+    existing = child_env.get("PYTHONPATH", "")
+    root_text = str(ROOT)
+    parts = [part for part in existing.split(os.pathsep) if part]
+    if root_text not in parts:
+        child_env["PYTHONPATH"] = root_text + (os.pathsep + existing if existing else "")
+
+
+def ensure_local_dual_write_defaults(child_env: dict[str, str]) -> None:
+    if child_env.get("ARCHIVEDB_LOCAL_DEV") != "1":
+        return
+    child_env.setdefault("STATE_DUAL_WRITE", "1")
+    child_env.setdefault("STATE_DUAL_WRITE_STRICT", "1")
+    child_env.setdefault("STATE_DUAL_WRITE_VERIFY", "1")
+
+
+def ensure_shadow_state_ready(py: Path, child_env: dict[str, str]) -> None:
+    if child_env.get("STATE_DUAL_WRITE", "0") != "1":
+        return
+
+    db_path = resolve_local_path(
+        child_env.get("SQLITE_DB_PATH"), ROOT / "data" / "arcdb.sqlite3"
+    )
+    verify_cmd = [str(py), str(ROOT / "scripts" / "verify_state_parity.py")]
+    if db_path.is_file():
+        result = subprocess.run(
+            verify_cmd,
+            cwd=ROOT,
+            env=child_env,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+        if result.returncode == 0:
+            print("[setup] " + result.stdout.strip())
+            return
+        print("[setup] Existing SQLite shadow is stale or incompatible; rebuilding safely.")
+        if result.stdout.strip():
+            print("[setup] " + result.stdout.strip())
+    else:
+        print("[setup] SQLite shadow database is missing; creating it from legacy state.")
+
+    subprocess.run(
+        [
+            str(py),
+            str(ROOT / "scripts" / "migrate_state_to_sqlite.py"),
+            "--verify",
+        ],
+        cwd=ROOT,
+        env=child_env,
+        check=True,
+    )
+    subprocess.run(verify_cmd, cwd=ROOT, env=child_env, check=True)
+    print("[setup] SQLite shadow state is ready for dual-write.")
+
+
 def browser_url(env: dict[str, str]) -> str:
     host = env.get("HOST", "127.0.0.1")
     if host in {"0.0.0.0", "::"}:
@@ -260,10 +323,13 @@ def main() -> int:
 
     child_env = os.environ.copy()
     child_env.update(env_values)
+    ensure_repo_pythonpath(child_env)
+    ensure_local_dual_write_defaults(child_env)
     ensure_local_directories(child_env)
     if args.auto_seed_if_empty:
         auto_seed_library_if_empty(py, child_env)
     seed_dev_account(py, child_env)
+    ensure_shadow_state_ready(py, child_env)
 
     if args.setup_only:
         print("[setup] Local development environment is ready.")
