@@ -151,3 +151,57 @@ Do not assume the archived source in Git is byte-identical to the live OCI appli
 Reasoning:
 
 The owner has not provided direct SSH access and production may contain newer local changes.
+
+## ADR-011 — JSON remains authoritative during dual-write introduction
+
+Status: accepted for Phase 2.
+
+Decision:
+
+For each newly migrated write domain:
+
+1. perform the existing legacy JSON mutation/write first;
+2. only after that succeeds, mirror the changed semantic state into SQLite;
+3. keep reads on JSON;
+4. compare/verify the shadow;
+5. do not switch reads in the same change that introduces a new write domain.
+
+Reasoning:
+
+The application already depends on legacy JSON behavior. Keeping JSON authoritative isolates SQLite-mirroring failures and provides a deterministic recovery source while write coverage is incomplete.
+
+If a strict local mirror fails after JSON succeeded, the request/test may fail loudly, but the authoritative state is still present in JSON and the shadow can be rebuilt from it.
+
+## ADR-012 — Runtime overlay is temporary fail-closed migration plumbing
+
+Status: accepted temporarily.
+
+Decision:
+
+While the Flask monolith is still stored as a compressed verified baseline, apply small migration hooks through `scripts/runtime_overlays.py` during materialization instead of repeatedly repacking the large baseline bundle.
+
+Requirements:
+
+- exact code matches only;
+- fail if expected baseline markers are absent or duplicated;
+- overlay hash participates in runtime materialization identity;
+- keep overlay changes small and migration-focused;
+- remove this mechanism once Flask source becomes normally tracked/refactored.
+
+Reasoning:
+
+It keeps current source provenance/checksum intact while allowing reviewable transitional hooks. Silent fuzzy patching would be too risky.
+
+## ADR-013 — Local shadow auto-rebuild is not a production mechanism
+
+Status: accepted.
+
+Decision:
+
+Local `start.bat` may rebuild a missing/stale SQLite shadow from authoritative JSON after verifying that another local server is not running and safely handling stale WAL sidecars.
+
+Production must not use this convenience path. Production shadow creation/replacement follows `docs/PRODUCTION_SAFETY.md` and explicit migration commands.
+
+Reasoning:
+
+Fast reproducible local development is valuable, but automatic production persistence replacement would violate the project's migration safety model.
