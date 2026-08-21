@@ -195,21 +195,33 @@ def export_users(conn: sqlite3.Connection) -> dict[str, Any]:
     return {row["email"]: _load(row["payload_json"]) for row in conn.execute("SELECT email, payload_json FROM users")}
 
 
-def export_user_data(conn: sqlite3.Connection) -> dict[str, dict[str, Any]]:
-    result: dict[str, dict[str, Any]] = {}
+def export_user_data(conn: sqlite3.Connection) -> dict[str, Any]:
+    source = snapshot_document(conn, "user_data.json")
+    result: dict[str, Any] = {}
+    if isinstance(source, dict):
+        for email, raw in source.items():
+            result[str(email)] = {} if isinstance(raw, dict) else raw
     for row in conn.execute(
         "SELECT user_email, novel_key, payload_json FROM user_novel_state ORDER BY user_email, novel_key"
     ):
-        result.setdefault(row["user_email"], {})[row["novel_key"]] = _load(row["payload_json"])
+        bucket = result.setdefault(row["user_email"], {})
+        if isinstance(bucket, dict):
+            bucket[row["novel_key"]] = _load(row["payload_json"])
     return result
 
 
-def export_collections(conn: sqlite3.Connection) -> dict[str, list[Any]]:
-    result: dict[str, list[Any]] = {}
+def export_collections(conn: sqlite3.Connection) -> dict[str, Any]:
+    source = snapshot_document(conn, "collections.json")
+    result: dict[str, Any] = {}
+    if isinstance(source, dict):
+        for email, raw in source.items():
+            result[str(email)] = [] if isinstance(raw, list) else raw
     for row in conn.execute(
         "SELECT user_email, payload_json FROM collections ORDER BY user_email, sort_order"
     ):
-        result.setdefault(row["user_email"], []).append(_load(row["payload_json"]))
+        bucket = result.setdefault(row["user_email"], [])
+        if isinstance(bucket, list):
+            bucket.append(_load(row["payload_json"]))
     return result
 
 
