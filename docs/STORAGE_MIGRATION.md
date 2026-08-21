@@ -315,7 +315,7 @@ Login/logout themselves only read the user record and mutate Flask session state
 
 ## Phase 3 — SQLite read comparison/cutover
 
-Status: feature-flagged comparison backend implemented; production cutover pending.
+Status: feature-flagged backends and legacy-serving runtime shadow observation implemented; production execution/cutover pending.
 
 - `STATE_READ_BACKEND=legacy` is the default;
 - `STATE_READ_BACKEND=sqlite` opens the verified shadow read-only and checks schema v3;
@@ -323,9 +323,14 @@ Status: feature-flagged comparison backend implemented; production cutover pendi
 - users, user state, collections, uploads, custom metadata and allowlist reads use the adapter;
 - write helpers bypass it and continue legacy-first durability followed by SQLite mirror;
 - seeded CI compares authenticated API/HTML output from simultaneous legacy and SQLite Flask processes;
-- real mutations also run successfully with SQLite reads enabled and finish at full parity.
+- real mutations also run successfully with SQLite reads enabled and finish at full parity;
+- `STATE_READ_SHADOW_COMPARE=1` performs an additional read-only SQLite export while returning the legacy result;
+- `STATE_READ_SHADOW_STRICT=0` records mismatch/error events without breaking authoritative legacy reads;
+- strict mode fails CI on any mismatch or SQLite error;
+- match/mismatch/error events contain only domain, counter and error type; user payloads and auth secrets are never logged;
+- successful events are rate-limited by `STATE_READ_SHADOW_REPORT_EVERY` after the first match per process/domain.
 
-Production enablement, observation and primary-read promotion remain pending. Retain legacy files and rollback controls throughout.
+Production reconciliation, actual observation and primary-read promotion remain pending. Retain legacy files and rollback controls throughout. Shadow comparison is valid only with `STATE_READ_BACKEND=legacy`; enabling it alongside `sqlite` fails closed to prevent an ambiguous rollout configuration.
 
 Do not combine a new dual-write domain and read-source cutover in one change.
 

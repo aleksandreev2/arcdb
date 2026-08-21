@@ -70,7 +70,9 @@ Completed:
   - local dev-account creation/update without rehashing an already valid password;
   - complete unknown-field-preserving user payloads and delete support in the storage helper;
 - full `users.json` <-> SQLite parity verification, including an empty document;
-- strict local dual-write verification and end-to-end CI.
+- strict local dual-write verification and end-to-end CI;
+- Phase 3 feature-flagged read adapters plus simultaneous legacy/SQLite API parity;
+- Phase 3B legacy-serving SQLite shadow comparison with process-local counters, payload-free events and strict all-domain CI.
 
 Still pending:
 
@@ -93,11 +95,12 @@ request
 reads
   -> `STATE_READ_BACKEND=legacy` by default
   -> optional read-only SQLite adapter for Phase 3 comparison
+  -> optional legacy-serving SQLite shadow comparison with payload-free events
 ```
 
 The SQLite mirror must never be treated as authoritative yet.
 
-Phase 3 now provides `STATE_READ_BACKEND=legacy|sqlite` across schema-v3 state domains. `legacy` is mandatory as the default. SQLite mode is for verified local/internal API comparison and must fail closed on a missing, stale or invalid database. Mutation helpers still read legacy directly before the durable legacy-first write.
+Phase 3 now provides `STATE_READ_BACKEND=legacy|sqlite` across schema-v3 state domains. `legacy` is mandatory as the default. SQLite mode is for verified local/internal API comparison and must fail closed on a missing, stale or invalid database. Phase 3B adds opt-in `STATE_READ_SHADOW_COMPARE=1` while legacy remains selected: each covered read compares SQLite, returns the legacy result and emits payload-free match/mismatch/error events. Mutation helpers still read legacy directly before the durable legacy-first write.
 
 Local defaults:
 
@@ -105,6 +108,10 @@ Local defaults:
 STATE_DUAL_WRITE=1
 STATE_DUAL_WRITE_STRICT=1
 STATE_DUAL_WRITE_VERIFY=1
+STATE_READ_BACKEND=legacy
+STATE_READ_SHADOW_COMPARE=0
+STATE_READ_SHADOW_STRICT=1
+STATE_READ_SHADOW_REPORT_EVERY=1000
 ```
 
 Production should leave `STATE_DUAL_WRITE` disabled until the explicit production shadow migration/cutover procedure is followed.
@@ -207,10 +214,11 @@ At minimum:
 
 ## Next ordered work
 
-1. Reconcile live production and run the verified shadow/API comparison protocol.
-2. Enable SQLite reads only for bounded internal traffic and observe parity/errors.
-3. Make SQLite primary reads only after stable observation.
-4. Stop legacy writes domain-by-domain later; keep rollback exports and legacy archives.
+1. Reconcile live production and run the verified migration/full-parity protocol.
+2. Enable legacy-serving shadow comparison for bounded internal traffic and observe payload-free match/mismatch/error events.
+3. Enable SQLite reads only for a bounded internal canary with immediate rollback to `legacy`.
+4. Make SQLite primary reads only after stable observation.
+5. Stop legacy writes domain-by-domain later; keep rollback exports and legacy archives.
 
 Do not jump directly to read cutover while write domains are incomplete.
 

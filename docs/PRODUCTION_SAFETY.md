@@ -183,7 +183,7 @@ Database file migration and application cutover are separate events.
 
 Repository Phase 2D completes runtime dual-write for all mutable domains currently represented by SQLite schema v3, including full `users.json` payloads. This does not authorize production enablement: the live baseline/paths must still be reconciled, a verified production shadow must exist and `STATE_DUAL_WRITE` remains opt-in. Community/IP-exemption/audit files outside schema v3 are not silently included in this claim.
 
-Phase 3 adds `STATE_READ_BACKEND=legacy|sqlite`, but keeps `legacy` as the default. SQLite mode uses read-only connections and fails closed for missing/stale/invalid state. Do not set it for production-wide traffic merely because seeded CI parity is green: first verify the live shadow, use bounded internal traffic, observe mismatches/errors and prove rollback to `legacy`.
+Phase 3 adds `STATE_READ_BACKEND=legacy|sqlite`, but keeps `legacy` as the default. SQLite mode uses read-only connections and fails closed for missing/stale/invalid state. Phase 3B adds a safer observation step: with `STATE_READ_BACKEND=legacy` and `STATE_READ_SHADOW_COMPARE=1`, the application serves the legacy result, reads SQLite only for comparison and emits payload-free match/mismatch/error events. Non-strict mode is fail-safe for the authoritative read; strict mode is for CI/local validation. Do not set SQLite mode for production-wide traffic merely because seeded CI parity is green: first verify the live shadow, use bounded internal traffic, observe comparison events and prove rollback to `legacy`.
 
 Recommended order:
 
@@ -193,18 +193,21 @@ Recommended order:
 4. Compare JSON and SQLite after each write in development/CI.
 5. Deploy dual-write with telemetry/logged mismatches.
 6. Observe a stable period.
-7. Enable SQLite reads behind a feature flag for internal/testing traffic.
-8. Compare API responses/state.
-9. Make SQLite primary read source.
-10. Keep legacy writes temporarily if rollback confidence requires it.
-11. Stop legacy writes after another stable observation period.
-12. Preserve legacy files read-only for an agreed retention period.
+7. Keep `STATE_READ_BACKEND=legacy`, enable shadow comparison for bounded internal traffic and observe every domain.
+8. Investigate every mismatch/error; do not continue while any divergence is unexplained.
+9. Disable shadow comparison and prove that legacy-only serving is an immediate rollback.
+10. Enable `STATE_READ_BACKEND=sqlite` only for a separate bounded internal canary.
+11. Compare API responses/state and switch the canary back to `legacy` as a rollback drill.
+12. Make SQLite primary read source only after a stable observation period.
+13. Keep legacy writes temporarily if rollback confidence requires it.
+14. Stop legacy writes after another stable observation period.
+15. Preserve legacy files read-only for an agreed retention period.
 
 ## Rollback
 
 ### Before SQLite becomes read source
 
-Rollback is trivial: disable dual-write/SQLite feature flags and continue using legacy state.
+Rollback is trivial: set `STATE_READ_BACKEND=legacy`, disable `STATE_READ_SHADOW_COMPARE`, and continue using legacy state. Dual-write may remain enabled if its verified shadow is healthy; disabling it is a separate operational choice.
 
 ### After SQLite becomes read source
 

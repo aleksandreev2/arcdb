@@ -131,7 +131,7 @@ Stores original custom metadata payload. Phase 2C runtime dual-write upserts the
 
 Primary key: normalized email. Phase 2C replaces the normalized table after each successful allowlist file mutation. Comments, blank lines, case variants and duplicates are file-format details; the semantic allowlist is the unique lowercase email set. The original file remains preserved by migration backups.
 
-## 4. Runtime ownership after Phase 2D
+## 4. Runtime ownership during Phase 3B
 
 For `users.json`, `user_data.json`, `collections.json`, `user_uploads.json`, `custom_meta.json` and allowlist state represented by schema v3:
 
@@ -148,7 +148,7 @@ SQLite
 
 This is intentionally asymmetric. SQLite must not become authoritative until read-cutover tests are complete.
 
-Phase 3 can export the live normalized/payload tables through a read-only SQLite connection when `STATE_READ_BACKEND=sqlite`. The default is `legacy`. Write helpers bypass the read adapter and load legacy state directly so the required durable legacy-first sequence cannot be inverted by the read flag.
+Phase 3 can export the live normalized/payload tables through a read-only SQLite connection when `STATE_READ_BACKEND=sqlite`. The default is `legacy`. Phase 3B can also compare those exports with real legacy-served reads when `STATE_READ_SHADOW_COMPARE=1`; equality is checked in memory and logs contain only domain/event/counter/error-type metadata, never state payloads. Write helpers bypass the read adapter and load legacy state directly so the required durable legacy-first sequence cannot be inverted by the read flag.
 
 Relevant feature flags:
 
@@ -157,6 +157,10 @@ STATE_DUAL_WRITE
 STATE_DUAL_WRITE_STRICT
 STATE_DUAL_WRITE_VERIFY
 STATE_DUAL_WRITE_LOG_SUCCESS
+STATE_READ_BACKEND
+STATE_READ_SHADOW_COMPARE
+STATE_READ_SHADOW_STRICT
+STATE_READ_SHADOW_REPORT_EVERY
 ```
 
 Local development enables strict/verified mirroring by default. Production remains opt-in.

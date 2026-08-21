@@ -102,7 +102,7 @@ Phase 2 exit criteria:
 
 ## Phase 3 — SQLite read cutover
 
-Status: comparison backend and seeded API parity implemented; production rollout/primary-read promotion pending.
+Status: comparison backend, seeded API parity and legacy-serving shadow observability implemented; production rollout/primary-read promotion pending.
 
 Implemented:
 
@@ -111,13 +111,16 @@ Implemented:
 - fail-closed invalid/missing/stale behavior;
 - mutation helpers that continue to read/write legacy first regardless of read backend;
 - simultaneous Flask API parity for login, library, collections, novel, trending, community, reader and admin output;
-- real mutation regressions while SQLite reads are enabled.
+- real mutation regressions while SQLite reads are enabled;
+- opt-in runtime shadow comparison that always returns legacy in non-strict observation mode;
+- process-local counters plus payload-free match/mismatch/error events for every schema-v3 read domain;
+- strict CI coverage for mismatch, missing SQLite, secret-safe logs and all-domain real Flask reads.
 
 Pending:
 
 1. reconcile and verify production state;
-2. enable SQLite reads only for bounded internal traffic;
-3. observe mismatch/error metrics;
+2. enable legacy-serving shadow comparison for bounded internal traffic and observe its events;
+3. enable SQLite reads only for a separate bounded internal canary;
 4. promote SQLite as primary read source only after stable observation;
 5. keep legacy files and rollback controls.
 
@@ -233,16 +236,16 @@ After process-local state is removed/split:
 ## Current immediate order
 
 ```text
-1. production shadow reconciliation + bounded SQLite read observation
-2. SQLite primary reads
-3. stop legacy writes domain-by-domain
-4. immediate upload/EPUB I/O fixes
-5. async packager
-6. Telethon split
-7. persistent library index
-8. frontend/static split
-9. R2/Cloudflare optimization
-10. production rollout after live reconciliation
+1. production reconciliation + bounded legacy-serving shadow observation
+2. bounded SQLite read canary
+3. SQLite primary reads
+4. stop legacy writes domain-by-domain
+5. immediate upload/EPUB I/O fixes
+6. async packager
+7. Telethon split
+8. persistent library index
+9. frontend/static split
+10. R2/Cloudflare optimization
 ```
 
 ## Explicit non-goals for now

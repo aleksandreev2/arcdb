@@ -99,9 +99,11 @@ Implemented in repository:
 - runtime Phase 2D dual-write for registration, verification, password-reset and local dev-account user records;
 - complete unknown-field-preserving `users.json` parity and idempotent dev-account bootstrap;
 - full users/auth, user-state, collection metadata, normalized membership and Phase 2C metadata parity checker;
-- real route-level dual-write CI.
+- real route-level dual-write CI;
+- feature-flagged SQLite reads plus simultaneous legacy/SQLite API parity;
+- legacy-serving runtime shadow comparison with payload-free events and strict all-domain CI.
 
-SQLite is **not** the default or production read source. Phase 3 now exposes `STATE_READ_BACKEND=legacy|sqlite`; local/CI can run the same authenticated API flows against both backends, while `legacy` remains default.
+SQLite is **not** the default or production read source. Phase 3 now exposes `STATE_READ_BACKEND=legacy|sqlite`; local/CI can run the same authenticated API flows against both backends, while `legacy` remains default. Phase 3B adds `STATE_READ_SHADOW_COMPARE=1` for legacy-served requests: SQLite is read only for equality checking and payload-free match/mismatch/error events, so non-strict observation cannot replace or damage the authoritative response.
 
 Current write flow for covered mutations:
 
@@ -162,6 +164,10 @@ Local defaults enable:
 STATE_DUAL_WRITE=1
 STATE_DUAL_WRITE_STRICT=1
 STATE_DUAL_WRITE_VERIFY=1
+STATE_READ_BACKEND=legacy
+STATE_READ_SHADOW_COMPARE=0
+STATE_READ_SHADOW_STRICT=1
+STATE_READ_SHADOW_REPORT_EVERY=1000
 ```
 
 If local state is reseeded and the shadow becomes stale, bootstrap can safely rebuild it because JSON is still authoritative. It refuses automatic rebuild outside local development.
@@ -210,15 +216,16 @@ Avoid a full rewrite. Keep Flask and preserve API/UI behavior while extracting r
 
 ## Current next ordered work
 
-1. Reconcile live production, verify its shadow and compare bounded internal legacy/SQLite API reads.
-2. Make SQLite primary read source only after stable observation.
-3. Stop JSON writes domain-by-domain; preserve legacy/export rollback paths.
-4. Optimize upload fsync and EPUB streaming.
-5. Move packaging to async jobs.
-6. Split Telethon into its own service.
-7. Build persistent novel/chapter index.
-8. Split static frontend assets.
-9. Introduce R2 selectively for immutable large objects.
+1. Reconcile live production and verify its shadow against authoritative legacy state.
+2. Run legacy-serving shadow comparison for bounded internal traffic and observe payload-free events.
+3. Run a separate bounded SQLite-read canary with tested rollback to `legacy`.
+4. Make SQLite primary read source only after stable observation.
+5. Stop JSON writes domain-by-domain; preserve legacy/export rollback paths.
+6. Optimize upload fsync and EPUB streaming.
+7. Move packaging to async jobs.
+8. Split Telethon into its own service.
+9. Build persistent novel/chapter index.
+10. Split static frontend assets and introduce R2 selectively where justified.
 
 ## Where to read next
 

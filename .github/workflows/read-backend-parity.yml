@@ -27,7 +27,9 @@ jobs:
           set -a
           source .env
           set +a
-          PYTHONPATH=. PORT=5004 STATE_READ_BACKEND=legacy ARCHIVEDB_AUTH_TEST_MODE=1 \
+          PYTHONPATH=. PORT=5004 STATE_READ_BACKEND=legacy \
+            STATE_READ_SHADOW_COMPARE=1 STATE_READ_SHADOW_STRICT=1 \
+            STATE_READ_SHADOW_REPORT_EVERY=1000 ARCHIVEDB_AUTH_TEST_MODE=1 \
             .venv/bin/python .runtime/source/gallery_app.py > legacy-server.log 2>&1 &
           LEGACY_PID=$!
           PYTHONPATH=. PORT=5005 STATE_READ_BACKEND=sqlite ARCHIVEDB_AUTH_TEST_MODE=1 \
@@ -59,6 +61,19 @@ jobs:
           ARCHIVEDB_TEST_BASE_URL=http://127.0.0.1:5005 \
             PYTHONPATH=. .venv/bin/python tests/runtime_auth_workflow.py
           PYTHONPATH=. .venv/bin/python scripts/verify_state_parity.py
+
+          for domain in users user_data collections user_uploads custom_meta allowed_emails; do
+            if ! grep -q "\[STATE-READ-SHADOW\] event=match domain=${domain}" legacy-server.log; then
+              echo "No successful runtime shadow comparison was observed for ${domain}."
+              cat legacy-server.log
+              exit 1
+            fi
+          done
+
+          if grep -Eq '\[STATE-READ-SHADOW\] event=(mismatch|error)' legacy-server.log; then
+            cat legacy-server.log
+            exit 1
+          fi
 
           if grep -Eq 'Your verification code is|Your password reset code is' legacy-server.log sqlite-server.log; then
             echo 'Auth workflow leaked a fixture code to a server log.'

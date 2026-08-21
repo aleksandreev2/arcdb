@@ -108,7 +108,16 @@ STATE_READ_BACKEND=legacy   # default
 STATE_READ_BACKEND=sqlite   # verified shadow comparison only
 ```
 
-Both backends are exercised against identical seeded API flows in CI. SQLite is not the production default or source of truth; production enablement still requires live reconciliation and an observation period.
+Phase 3B can compare SQLite on real legacy-served reads without changing the response source:
+
+```text
+STATE_READ_BACKEND=legacy
+STATE_READ_SHADOW_COMPARE=1
+STATE_READ_SHADOW_STRICT=0        # fail-safe observation
+STATE_READ_SHADOW_REPORT_EVERY=1000
+```
+
+The first successful comparison per domain and then every configured interval are logged as payload-free events; mismatches and SQLite errors are always logged. Strict mode is enabled in CI so any divergence fails visibly. Both explicit backends and runtime shadow comparison are exercised against identical seeded API flows in CI. SQLite is not the production default or source of truth; production enablement still requires live reconciliation, bounded observation and a separate canary.
 
 Local safe migration test:
 
