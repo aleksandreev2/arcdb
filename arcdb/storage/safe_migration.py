@@ -242,7 +242,7 @@ def preserve_existing_database(db_path: Path, backup_dir: Path) -> Path | None:
         )
     previous_dir = backup_dir / "previous-sqlite"
     previous_dir.mkdir(parents=True, exist_ok=True)
-    backup = previous_dir / db_path.name
+    backup = previous_dir / (db_path.name + ".verified-copy")
     shutil.copy2(db_path, backup)
     if sha256_file(db_path) != sha256_file(backup):
         raise RuntimeError("Existing SQLite backup checksum mismatch")
@@ -251,14 +251,35 @@ def preserve_existing_database(db_path: Path, backup_dir: Path) -> Path | None:
 
 def promote_candidate(candidate_path: Path, db_path: Path, backup_dir: Path) -> Path | None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    previous_backup = preserve_existing_database(db_path, backup_dir)
+    previous_copy = preserve_existing_database(db_path, backup_dir)
+    moved_previous: Path | None = None
 
-    # os.replace is atomic when candidate and target are on the same filesystem.
-    os.replace(candidate_path, db_path)
+    if db_path.exists():
+        previous_dir = backup_dir / "previous-sqlite"
+        moved_previous = previous_dir / (db_path.name + ".pre-migration-original")
+        os.replace(db_path, moved_previous)
+
+    try:
+        # Candidate and target are siblings, so this rename is atomic on the same filesystem.
+        os.replace(candidate_path, db_path)
+    except Exception:
+        if moved_previous is not None and moved_previous.exists() and not db_path.exists():
+            os.replace(moved_previous, db_path)
+        raise
 
     conn = connect_db(db_path)
     try:
         verify_database(conn)
+    except Exception:
+        # Restore the previous target if we had one. The verified copy remains even
+        # after a successful restoration, so rollback never depends on a single file.
+        if moved_previous is not None and moved_previous.exists():
+            failed_target = backup_dir / "failed-promoted-sqlite.sqlite3"
+            if db_path.exists():
+                os.replace(db_path, failed_target)
+            os.replace(moved_previous, db_path)
+        raise
     finally:
         conn.close()
-    return previous_backup
+
+    return previous_copy
