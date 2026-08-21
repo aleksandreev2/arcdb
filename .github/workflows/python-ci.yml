@@ -82,9 +82,9 @@ jobs:
       - name: Prepare local environment without starting Flask
         run: CI=1 python scripts/dev_bootstrap.py --setup-only
       - name: Build lightweight EPUB seed fixtures
-        run: .venv/bin/python tests/make_seed_fixtures.py tests/Downloads.zip
-      - name: Seed local library
-        run: .venv/bin/python scripts/dev_seed_library.py tests/Downloads.zip --no-backup
+        run: .venv/bin/python tests/make_seed_fixtures.py dev-fixtures/inbox/Downloads.zip
+      - name: Auto-seed empty library through bootstrap
+        run: CI=1 python scripts/dev_bootstrap.py --setup-only --auto-seed-if-empty
       - name: Verify generated seed state
         run: |
           .venv/bin/python - <<'PY'
