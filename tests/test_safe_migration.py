@@ -121,6 +121,38 @@ class SafeMigrationTests(unittest.TestCase):
                     snapshot["fingerprints"], meta_dir=meta, explicit_files=[users]
                 )
 
+    def test_explicit_derived_databases_are_excluded_but_unknown_files_are_preserved(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            meta = root / "metadata"
+            meta.mkdir()
+            users = meta / "users.json"
+            users.write_text("{}\n", encoding="utf-8")
+            derived = meta / "library_index.sqlite3"
+            derived.write_bytes(b"derived")
+            Path(str(derived) + "-wal").write_bytes(b"wal")
+            unknown = meta / "unknown.sqlite3"
+            unknown.write_bytes(b"preserve")
+
+            snapshot = create_verified_snapshot(
+                backup_dir=root / "backup",
+                meta_dir=meta,
+                explicit_files=[users],
+                excluded_files=[derived],
+            )
+            sources = {entry["source"] for entry in snapshot["manifest"]["files"]}
+            self.assertNotIn(str(derived.resolve()), sources)
+            self.assertNotIn(str(Path(str(derived) + "-wal").resolve()), sources)
+            self.assertIn(str(unknown.resolve()), sources)
+
+            derived.write_bytes(b"changed while migration runs")
+            assert_sources_unchanged(
+                snapshot["fingerprints"],
+                meta_dir=meta,
+                explicit_files=[users],
+                excluded_files=[derived],
+            )
+
     def test_existing_sqlite_is_preserved_before_promotion(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

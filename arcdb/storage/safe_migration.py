@@ -45,15 +45,31 @@ def file_fingerprint(path: Path) -> dict[str, Any]:
     }
 
 
-def discover_snapshot_files(meta_dir: Path, explicit_files: Iterable[Path]) -> list[Path]:
+def _excluded_artifact_paths(paths: Iterable[Path]) -> set[str]:
+    excluded: set[str] = set()
+    for path in paths:
+        resolved = path.resolve()
+        excluded.add(str(resolved))
+        excluded.add(str(Path(str(resolved) + "-wal").resolve()))
+        excluded.add(str(Path(str(resolved) + "-shm").resolve()))
+    return excluded
+
+
+def discover_snapshot_files(
+    meta_dir: Path,
+    explicit_files: Iterable[Path],
+    *,
+    excluded_files: Iterable[Path] = (),
+) -> list[Path]:
+    excluded = _excluded_artifact_paths(excluded_files)
     discovered: dict[str, Path] = {}
     if meta_dir.exists():
         for path in meta_dir.rglob("*"):
-            if path.is_file():
+            if path.is_file() and str(path.resolve()) not in excluded:
                 discovered[str(path.resolve())] = path.resolve()
     for path in explicit_files:
         resolved = path.resolve()
-        if resolved.exists() and resolved.is_file():
+        if str(resolved) not in excluded and resolved.exists() and resolved.is_file():
             discovered[str(resolved)] = resolved
     return sorted(discovered.values(), key=lambda p: str(p).casefold())
 
@@ -67,6 +83,7 @@ def assert_sources_unchanged(
     *,
     meta_dir: Path,
     explicit_files: Iterable[Path],
+    excluded_files: Iterable[Path] = (),
 ) -> None:
     changed: list[str] = []
     for raw_path, expected in before.items():
@@ -77,7 +94,14 @@ def assert_sources_unchanged(
             changed.append(raw_path)
 
     expected_existing = {path for path, fp in before.items() if fp.get("exists")}
-    current_existing = {str(path.resolve()) for path in discover_snapshot_files(meta_dir, explicit_files)}
+    current_existing = {
+        str(path.resolve())
+        for path in discover_snapshot_files(
+            meta_dir,
+            explicit_files,
+            excluded_files=excluded_files,
+        )
+    }
     if current_existing != expected_existing:
         added = sorted(current_existing - expected_existing)
         removed = sorted(expected_existing - current_existing)
@@ -96,13 +120,18 @@ def create_verified_snapshot(
     backup_dir: Path,
     meta_dir: Path,
     explicit_files: Iterable[Path],
+    excluded_files: Iterable[Path] = (),
 ) -> dict[str, Any]:
     backup_dir.mkdir(parents=True, exist_ok=False)
     files_dir = backup_dir / "legacy-files"
     files_dir.mkdir(parents=True, exist_ok=False)
 
     explicit = [path.resolve() for path in explicit_files]
-    source_files = discover_snapshot_files(meta_dir, explicit)
+    source_files = discover_snapshot_files(
+        meta_dir,
+        explicit,
+        excluded_files=excluded_files,
+    )
     tracked_paths = {str(path.resolve()): path.resolve() for path in source_files}
     for path in explicit:
         tracked_paths.setdefault(str(path), path)

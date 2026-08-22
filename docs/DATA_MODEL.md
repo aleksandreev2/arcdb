@@ -234,7 +234,7 @@ data/
 
 The current code can refer to a title using several values, including numeric/raw/source ids, filenames and library keys. Repeated lookup by scanning lists is a known problem.
 
-Future library indexing should define one stable internal `novel_id` and explicit alternate keys:
+The implemented library index defines one stable internal id and explicit alternate keys:
 
 - source id / NovelPia id where available;
 - raw filename;
@@ -244,40 +244,24 @@ Future library indexing should define one stable internal `novel_id` and explici
 
 Do not silently change identifier semantics during SQLite user-state migration because existing `user_data.json` keys must keep mapping to the same titles.
 
-## 8. Future library index
+## 8. Rebuildable library index
 
-Expected later tables/entities may include:
+Implemented repository/local/CI schema version 1 uses a separate
+`library_index.sqlite3`, not state schema v3:
 
-### `novels`
+- `index_meta` — schema/generation/source fingerprint and sanitized counts;
+- `library_items` — stable id, normalized searchable/sortable fields, content hash
+  and compatibility payload;
+- `library_aliases` — explicit id/filename/library-key/source-id lookup;
+- `library_tags` — normalized tag membership;
+- `library_chapters` — ordered relative reader paths and extracted titles;
+- `library_images` — relative image paths;
+- optional `library_fts` — trigram FTS5 search text.
 
-- stable internal id;
-- title/original title;
-- source;
-- source id;
-- language;
-- metadata/tags;
-- chapter count;
-- cover key/path;
-- current version/hash;
-- timestamps.
-
-### `novel_files`
-
-- novel id;
-- file/object type (`raw_epub`, `translation_epub`, `cover`, etc.);
-- local path or object key;
-- size/hash;
-- version/current flag.
-
-### `chapters`
-
-- novel id;
-- chapter id/number/title;
-- relative path/object key;
-- content hash;
-- optional word count/update time.
-
-These are future plans, not part of state schema v3.
+The database is derived from preserved metadata/content and can be rebuilt through
+an atomic candidate. It may include private paths in compatibility payloads and is
+never a public report. File/object version tables and normalized alternate-title
+entities remain possible later refinements, not current schema claims.
 
 ## 9. Storage semantics
 

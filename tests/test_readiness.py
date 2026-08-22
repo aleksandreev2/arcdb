@@ -128,6 +128,22 @@ class ReadCutoverReadinessTests(unittest.TestCase):
             self.assertNotIn("community-state.json", serialized)
             self.assertEqual(report["database"]["row_counts"]["users"], len(docs["users"]))
 
+    def test_explicit_derived_database_is_not_a_legacy_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            meta, db, _docs = self._fixture(root)
+            derived = meta / "library_index.sqlite3"
+            derived.write_bytes(b"derived")
+            Path(str(derived) + "-wal").write_bytes(b"derived-wal")
+            paths = resolve_readiness_paths(
+                meta_dir=meta,
+                db_path=db,
+                derived_database_paths=(derived,),
+            )
+            report = verify_read_cutover_readiness(paths)
+            self.assertEqual(report["status"], "preflight_passed")
+            self.assertEqual(report["legacy_sources"]["unknown_files"], 1)
+
     def test_empty_documents_are_valid_when_core_files_exist(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

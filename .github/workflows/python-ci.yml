@@ -25,6 +25,7 @@ jobs:
           arcdb/app.py
           arcdb/epub_io.py
           arcdb/jobs.py
+          arcdb/library_index.py
           arcdb/package_worker.py
           arcdb/telegram_gateway.py
           arcdb/telegram_service.py
@@ -43,8 +44,10 @@ jobs:
           scripts/dev_seed_library.py
           scripts/benchmark_epub_io.py
           scripts/benchmark_job_queue.py
+          scripts/benchmark_library_index.py
           scripts/run_packager.py
           scripts/run_telegram.py
+          scripts/reindex_library.py
           scripts/migrate_state_to_sqlite.py
           scripts/verify_migration_backup.py
           scripts/export_sqlite_to_legacy.py
@@ -70,6 +73,7 @@ jobs:
           tests/test_runtime_metadata.py
           tests/test_epub_io.py
           tests/test_jobs.py
+          tests/test_library_index.py
           tests/test_telegram_service.py
           tests/test_tracked_runtime.py
           tests/test_telegram_service.py
@@ -151,7 +155,10 @@ jobs:
           assert Path('data/structured_output/900001').is_dir()
           assert Path('data/structured_output/900002').is_dir()
           assert len(list(Path('data/batched_epubs').glob('*.epub'))) == 5
+          assert Path('data/library_index.sqlite3').is_file()
           PY
+      - name: Verify persistent library index
+        run: PYTHONPATH=. .venv/bin/python scripts/reindex_library.py --verify-only
       - name: Verify seeded state shadow parity
         run: PYTHONPATH=. .venv/bin/python scripts/verify_state_parity.py
       - name: Start seeded ArchiveDB and verify library API
@@ -224,6 +231,7 @@ jobs:
           tests/test_production_inventory.py
           tests/test_runtime_users.py
           tests/test_runtime_metadata.py
+          tests/test_library_index.py
           tests/test_tracked_runtime.py
           tests/test_dev_seed.py
       - name: Run read-only cutover readiness preflight

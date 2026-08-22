@@ -72,6 +72,7 @@ from arcdb.epub_io import (
     validate_epub_archive,
 )
 from arcdb.jobs import JobStore
+from arcdb.library_index import LibraryIndex, LibraryIndexUnavailable
 from arcdb.telegram_gateway import TelegramGateway, TelegramGatewayError
 
 # ====================================================================
@@ -148,6 +149,11 @@ LOCAL_OUTPUT_DIR = _env_str("LOCAL_OUTPUT_DIR", "/home/ubuntu/nvidia_chat_bot/ou
 STRUCTURED_OUTPUT_DIR = _env_str("STRUCTURED_OUTPUT_DIR", "/home/ubuntu/all_translated_epubs/structured_output/")
 BATCHED_EPUBS_DIR = _env_str("BATCHED_EPUBS_DIR", "/home/ubuntu/batched_epubs/")
 META_DIR = _env_str("META_DIR", "/home/ubuntu/metadata/")
+LIBRARY_INDEX_DB_PATH = _env_str(
+    "LIBRARY_INDEX_DB_PATH",
+    os.path.join(META_DIR, "library_index.sqlite3"),
+)
+LIBRARY_INDEX = LibraryIndex(LIBRARY_INDEX_DB_PATH)
 
 JSON_DB_PATH = os.path.join(META_DIR, "novels_full.json")
 TITLES_EN_PATH = os.path.join(META_DIR, "titles_en.txt")
@@ -325,6 +331,14 @@ def is_rewritable_asset_filename(path):
 # 2. FLASK APP SETUP & STARTUP WARNINGS
 # ====================================================================
 app = Flask(__name__)
+
+
+@app.errorhandler(LibraryIndexUnavailable)
+def library_index_unavailable(_error):
+    message = "Library index is unavailable. Run the controlled reindex procedure."
+    if request.path.startswith("/api/"):
+        return jsonify({"status": "error", "error": message}), 503
+    return message, 503
 logging.getLogger("werkzeug").setLevel(logging.ERROR)
 app.jinja_env.undefined = ChainableUndefined
 app.secret_key = FLASK_SECRET_KEY
@@ -1743,95 +1757,66 @@ def _format_uploader_name(email_or_name):
         return prefix if prefix else val
     return val
 
+def _uploaded_gallery_item(upload_id, record):
+    if not isinstance(record, dict) or not record.get("approved", False):
+        return None
+    folder_name = str(record.get("local_folder") or "").strip()
+    folder_path = os.path.join(LOCAL_OUTPUT_DIR, folder_name) if folder_name else ""
+    has_local_read = bool(folder_name and os.path.isdir(folder_path))
+    cover_file_path = str(record.get("cover_file_path") or "")
+    cover_url = (
+        f"/api/upload/{quote(str(upload_id), safe='')}/asset/cover"
+        if cover_file_path and os.path.isfile(cover_file_path)
+        else ""
+    )
+    raw_epub_path = str(record.get("raw_epub_path") or "")
+    translated_epub_path = str(record.get("translated_epub_path") or "")
+    raw_original_name = str(record.get("raw_original_name") or "")
+    translated_original_name = str(record.get("translated_original_name") or "")
+    return {
+        "has_meta": True,
+        "is_custom": False,
+        "uploaded": True,
+        "id": str(upload_id),
+        "filename": translated_original_name or raw_original_name or f"{upload_id}.epub",
+        "title_en": str(record.get("title_en") or "Untitled"),
+        "title_kr": str(record.get("raw_title") or ""),
+        "author": str(record.get("author") or "Unknown"),
+        "cover": cover_url,
+        "tags": dedupe_tags(record.get("tags") or []),
+        "synopsis": str(record.get("description") or ""),
+        "views": 0,
+        "likes": 0,
+        "chapters": (
+            _count_readable_chapters(folder_path) if has_local_read else 0
+        ),
+        "age": 0,
+        "complete": 0,
+        "upload_date": str(record.get("upload_date") or LEGACY_UPLOAD_DATE),
+        "tg_link": "",
+        "raw_tg_link": "",
+        "translated_epub_path": (
+            translated_epub_path if os.path.isfile(translated_epub_path) else ""
+        ),
+        "raw_epub_path": raw_epub_path if os.path.isfile(raw_epub_path) else "",
+        "uploader_email": str(record.get("uploader_email") or ""),
+        "uploader_name": _format_uploader_name(
+            record.get("uploader_name") or record.get("uploader_email")
+        ),
+        "local_folder": folder_name if has_local_read else "",
+        "has_local_read": has_local_read,
+        "is_raw_only": not bool(translated_epub_path),
+        "_library_key": f"user-upload:{upload_id}",
+        "_source_ids": [],
+    }
+
 def _uploaded_gallery_items():
     """Convert approved user_uploads.json records into normal gallery items."""
-    results = []
-    for upload_id, record in load_user_uploads().items():
-        if not isinstance(record, dict):
-            continue
-        # Hide novels that are pending admin approval
-        if not record.get("approved", False):
-            continue
-
-        folder_name = str(record.get("local_folder") or "").strip()
-        folder_path = (
-            os.path.join(LOCAL_OUTPUT_DIR, folder_name)
-            if folder_name
-            else ""
-        )
-        has_local_read = bool(
-            folder_name and os.path.isdir(folder_path)
-        )
-        cover_file_path = str(record.get("cover_file_path") or "")
-        cover_url = (
-            f"/api/upload/{quote(str(upload_id), safe='')}/asset/cover"
-            if cover_file_path and os.path.isfile(cover_file_path)
-            else ""
-        )
-        raw_epub_path = str(record.get("raw_epub_path") or "")
-        translated_epub_path = str(
-            record.get("translated_epub_path") or ""
-        )
-        raw_original_name = str(
-            record.get("raw_original_name") or ""
-        )
-        translated_original_name = str(
-            record.get("translated_original_name") or ""
-        )
-        item = {
-            "has_meta": True,
-            "is_custom": False,
-            "uploaded": True,
-            "id": str(upload_id),
-            "filename": (
-                translated_original_name
-                or raw_original_name
-                or f"{upload_id}.epub"
-            ),
-            "title_en": str(record.get("title_en") or "Untitled"),
-            "title_kr": str(record.get("raw_title") or ""),
-            "author": str(record.get("author") or "Unknown"),
-            "cover": cover_url,
-            "tags": dedupe_tags(record.get("tags") or []),
-            "synopsis": str(record.get("description") or ""),
-            "views": 0,
-            "likes": 0,
-            "chapters": (
-                _count_readable_chapters(folder_path)
-                if has_local_read
-                else 0
-            ),
-            "age": 0,
-            "complete": 0,
-            "upload_date": str(
-                record.get("upload_date") or LEGACY_UPLOAD_DATE
-            ),
-            "tg_link": "",
-            "raw_tg_link": "",
-            "translated_epub_path": (
-                translated_epub_path
-                if os.path.isfile(translated_epub_path)
-                else ""
-            ),
-            "raw_epub_path": (
-                raw_epub_path
-                if os.path.isfile(raw_epub_path)
-                else ""
-            ),
-            "uploader_email": str(
-                record.get("uploader_email") or ""
-            ),
-            "uploader_name": _format_uploader_name(
-                record.get("uploader_name") or record.get("uploader_email")
-            ),
-            "local_folder": folder_name if has_local_read else "",
-            "has_local_read": has_local_read,
-            "is_raw_only": not bool(translated_epub_path),
-            "_library_key": f"user-upload:{upload_id}",
-            "_source_ids": [],
-        }
-        results.append(item)
-    return results
+    return [
+        item
+        for upload_id, record in load_user_uploads().items()
+        if (item := _uploaded_gallery_item(upload_id, record)) is not None
+    ]
 
 def _gallery_identity(item):
     if item.get("id"):
@@ -2137,17 +2122,7 @@ def _build_gallery_items():
             item["age"] = 19
     return deduped
 
-_gallery_cache = {
-    "items": [],
-    "csv_mtime": 0.0,
-    "raw_mtime": 0.0,
-    "custom_mtime": 0.0,
-    "uploads_mtime": 0.0,
-    "out_mtime": 0.0,
-    "structured_mtime": 0.0,
-    "batched_mtime": 0.0,
-    "gen": 0,
-}
+_gallery_cache = {"items": [], "gen": None}
 _GALLERY_CACHE_LOCK = threading.Lock()
 
 def _mtime(path):
@@ -2157,50 +2132,17 @@ def _mtime(path):
         return 0.0
 
 def load_gallery_data():
-    csv_mtime = _mtime(TRANSLATED_CSV_PATH)
-    raw_mtime = _mtime(RAW_MASTER_CSV_PATH)
-    custom_mtime = _mtime(CUSTOM_META_PATH)
-    uploads_mtime = _mtime(USER_UPLOADS_PATH)
-    out_mtime = _mtime(LOCAL_OUTPUT_DIR)
-    structured_mtime = _mtime(STRUCTURED_OUTPUT_DIR)
-    batched_mtime = _mtime(BATCHED_EPUBS_DIR)
+    generation = LIBRARY_INDEX.generation()
     with _GALLERY_CACHE_LOCK:
         cache = _gallery_cache
-        if (
-            cache["items"]
-            and cache["csv_mtime"] == csv_mtime
-            and cache["raw_mtime"] == raw_mtime
-            and cache["custom_mtime"] == custom_mtime
-            and cache["uploads_mtime"] == uploads_mtime
-            and cache["out_mtime"] == out_mtime
-            and cache.get("structured_mtime") == structured_mtime
-            and cache.get("batched_mtime") == batched_mtime
-        ):
+        if cache["items"] and cache["gen"] == generation:
             return cache["items"]
-        items = _build_gallery_items()
-        cache.update(
-            items=items,
-            csv_mtime=csv_mtime,
-            raw_mtime=raw_mtime,
-            custom_mtime=custom_mtime,
-            uploads_mtime=uploads_mtime,
-            out_mtime=out_mtime,
-            structured_mtime=structured_mtime,
-            batched_mtime=batched_mtime,
-            gen=cache["gen"] + 1,
-        )
+        items = LIBRARY_INDEX.all_items()
+        cache.update(items=items, gen=generation)
         return items
 
 def find_novel(novel_id):
-    ref = str(novel_id).strip()
-    items = load_gallery_data()
-    for n in items:
-        if str(n.get("id")) == ref or n.get("filename") == ref or n.get("_library_key") == ref:
-            return n
-    for n in items:
-        if ref in [str(x) for x in (n.get("_source_ids") or [])]:
-            return n
-    return None
+    return LIBRARY_INDEX.lookup(str(novel_id).strip())
 
 def novel_key(novel):
     return str(novel.get("id")) if novel.get("id") else novel.get("filename", "")
@@ -3001,7 +2943,7 @@ def _clean_chapter_title(title):
     cleaned = _CHAPTER_PREFIX_RE.sub("", title).strip()
     return cleaned or title
 
-def get_epub_toc_titles(base_path):
+def _scan_epub_toc_titles(base_path):
     titles_map = {}
     if not os.path.isdir(base_path):
         return titles_map
@@ -3020,19 +2962,10 @@ def get_epub_toc_titles(base_path):
         print(f"[WARN] Could not parse chapter heading titles from {base_path}: {exc}")
     return titles_map
 
-_TOC_TITLES_CACHE = {}
-
 def get_novel_toc_titles(novel):
-    base_path = novel_base_path(novel)
-    if not base_path:
-        return {}
-    if base_path in _TOC_TITLES_CACHE:
-        return _TOC_TITLES_CACHE[base_path]
-    titles = get_epub_toc_titles(base_path)
-    _TOC_TITLES_CACHE[base_path] = titles
-    return titles
+    return LIBRARY_INDEX.chapters(novel_key(novel))[1]
 
-def get_novel_toc(novel):
+def _scan_novel_toc(novel):
     base_path = novel_base_path(novel)
     chapter_files = []
     if os.path.isdir(base_path):
@@ -3048,7 +2981,7 @@ def get_novel_toc(novel):
         return _fill_sequence_gaps(chapter_files)
     return []
 
-def get_novel_images(novel):
+def _scan_novel_images(novel):
     base_path = novel_base_path(novel)
     images = set()
     if os.path.isdir(base_path):
@@ -3067,6 +3000,27 @@ def get_novel_images(novel):
         except (OSError, zipfile.BadZipFile):
             pass
     return sorted(images)
+
+def _indexed_novel_content(novel):
+    base_path = novel_base_path(novel)
+    return {
+        "chapters": _scan_novel_toc(novel),
+        "titles": _scan_epub_toc_titles(base_path),
+        "images": _scan_novel_images(novel),
+    }
+
+def rebuild_library_index():
+    """Explicitly scan source/content storage and atomically publish a new index."""
+    return LIBRARY_INDEX.rebuild(
+        _build_gallery_items(),
+        content_loader=_indexed_novel_content,
+    )
+
+def get_novel_toc(novel):
+    return LIBRARY_INDEX.chapters(novel_key(novel))[0]
+
+def get_novel_images(novel):
+    return LIBRARY_INDEX.images(novel_key(novel))
 
 _MEDIA_REF_PATTERN = re.compile(r"(src=|href=|url\()(['\"]?)([^'\" \)>]+)\2([\s)>]|$)", re.IGNORECASE)
 
@@ -3457,33 +3411,33 @@ def api_collection_assign():
 @app.route("/api/tags", methods=["GET"])
 @login_required
 def api_tags():
-    canonical_map = {}
-    for n in load_gallery_data():
-        for t in n.get("tags", []):
-            if not t or t == "Unmatched":
-                continue
-            t_str = str(t).strip()
-            if not t_str:
-                continue
-            key = t_str.lower()
-            if key not in canonical_map:
-                canonical_map[key] = [t_str, 1]
-            else:
-                canonical_map[key][1] += 1
-                if canonical_map[key][0].islower() and not t_str.islower():
-                    canonical_map[key][0] = t_str
-    tag_counts = {disp: count for disp, count in canonical_map.values()}
-    return jsonify(tag_counts)
+    return jsonify(LIBRARY_INDEX.tag_counts())
 
 @app.route("/api/authors", methods=["GET"])
 @login_required
 def api_authors():
-    authors = set()
-    for n in load_gallery_data():
-        a = n.get("author", "").strip()
-        if a and a not in ("Unknown", "Raw Upload"):
-            authors.add(a)
-    return jsonify(sorted(authors))
+    return jsonify(LIBRARY_INDEX.authors())
+
+@app.route("/api/admin/state-read-probe", methods=["GET"])
+@login_required
+def api_admin_state_read_probe():
+    """Exercise every state read adapter without returning state or identities."""
+    if session.get("user_email", "") not in ADMIN_EMAILS:
+        return json_error("Forbidden.", 403)
+    values = {
+        "users": load_users(),
+        "user_data": load_user_data(),
+        "collections": load_collections(),
+        "user_uploads": load_user_uploads(),
+        "custom_meta": load_custom_meta(),
+        "allowed_emails": get_allowed_emails(),
+    }
+    if any(not isinstance(value, (dict, set, list)) for value in values.values()):
+        return json_error("State read probe failed.", 503)
+    return jsonify({
+        "status": "ok",
+        "domains": sorted(values),
+    })
 
 @app.route("/api/user_status", methods=["POST"])
 @login_required
@@ -3622,95 +3576,6 @@ def api_user_hide():
     user_record = mutate_user_data(mutator, shadow_email=user_email, shadow_reason="user_hide")
     return jsonify({"status": "success", "user_data": user_record})
 
-def _passes_filters(novel, filters, user_data):
-    upload_source = filters.get("upload_source", "all")
-    is_uploaded = bool(novel.get("uploaded"))
-    is_updated = bool(novel.get("is_updated"))
-    if upload_source == "uploaded" and not is_uploaded:
-        return False
-    if upload_source == "updated" and not is_updated:
-        return False
-    if upload_source == "official" and (is_uploaded or is_updated):
-        return False
-
-    n_id = novel_key(novel)
-    u_status = user_data.get(n_id, {}).get("status", "none")
-    reading_status = filters["reading_status"]
-    if reading_status == "any" and u_status in ("none", ""):
-        return False
-    if reading_status in ("want_to_read", "reading", "finished") and u_status != reading_status:
-        return False
-
-    translated_filter = filters.get("translated_chapter", "all")
-    has_translated = bool(
-        novel.get("tg_link")
-        or novel.get("translated_epub_path")
-        or novel.get("has_local_read")
-    )
-    if translated_filter == "translated" and not has_translated:
-        return False
-    if translated_filter == "raw" and has_translated:
-        return False
-
-    is_adult = _novel_is_adult(novel)
-    if filters["audience"] == "non_adult" and is_adult:
-        return False
-    if filters["audience"] == "adult" and not is_adult:
-        return False
-
-    n_status = to_int(novel.get("complete"), 0) if str(novel.get("complete", "0")).isdigit() else 0
-    if filters["status"] == "ongoing" and n_status != 0:
-        return False
-    if filters["status"] == "complete" and n_status != 1:
-        return False
-
-    author_filter = filters["author"]
-    if author_filter and author_filter != "all":
-        if author_filter not in novel.get("author", "").strip().lower():
-            return False
-
-    n_chaps = to_int(novel.get("chapters"), 0) if str(novel.get("chapters", "0")).isdigit() else 0
-    if not (filters["min_chapters"] <= n_chaps <= filters["max_chapters"]):
-        return False
-
-    search = filters["search"]
-    if search:
-        title_en = (novel.get("title_en") or "").lower()
-        title_kr = (novel.get("title_kr") or "").lower()
-        if search not in title_en and search not in title_kr and search not in n_id:
-            return False
-
-    n_tags = novel.get("tags", [])
-    if n_tags:
-        n_tags_lower = {str(t).strip().lower() for t in n_tags if t}
-        if any(t in n_tags_lower for t in ("r-19", "r19", "19금")):
-            n_tags_lower.add("r-19")
-            n_tags_lower.add("r19")
-            n_tags_lower.add("19금")
-        if filters["excludes"]:
-            excludes_lower = {str(t).strip().lower() for t in filters["excludes"] if t}
-            if not excludes_lower.isdisjoint(n_tags_lower):
-                return False
-        if filters["includes"]:
-            includes_lower = {str(t).strip().lower() for t in filters["includes"] if t}
-            if filters["tag_match"] == "or":
-                if includes_lower.isdisjoint(n_tags_lower):
-                    return False
-            elif not includes_lower.issubset(n_tags_lower):
-                return False
-    elif filters["includes"]:
-        return False
-
-    coll = filters.get("collection", "all")
-    if coll and coll not in ("all", ""):
-        member_of = (user_data.get(novel_key(novel), {}) or {}).get("collections", []) or []
-        if coll == "none":
-            if member_of:
-                return False
-        elif coll not in member_of:
-            return False
-    return True
-
 @app.route("/api/library", methods=["POST"])
 @login_required
 def api_library():
@@ -3733,49 +3598,39 @@ def api_library():
         "audience": data.get("audience", "all"),
         "status": data.get("status", "all"),
         "author": str(data.get("author", "")).strip().lower(),
+        "language": str(data.get("language", "all")).strip().lower(),
         "min_chapters": to_int(data.get("minChapters"), 0),
         "max_chapters": to_int(data.get("maxChapters"), 999999) or 999999,
         "tag_match": str(data.get("tagMatch", "and")).strip().lower(),
         "collection": str(data.get("collection", "all")).strip(),
+        "updated_after": str(data.get("updatedAfter", "")).strip(),
+        "updated_before": str(data.get("updatedBefore", "")).strip(),
     }
 
     user_email = session.get("user_email", "")
     user_data = load_user_data().get(user_email, {})
-    filtered = [n for n in load_gallery_data() if _passes_filters(n, filters, user_data)]
-
-    if data.get("random"):
-        if filtered:
-            return jsonify({"random_id": novel_key(random.choice(filtered))})
-        return jsonify({"random_id": None})
 
     target_sort = sort_by
     if filters["reading_status"] != "all" and sort_by == "views":
         target_sort = "last_read"
-
-    def sort_key(x):
-        if target_sort == "last_read":
-            return user_data.get(novel_key(x), {}).get("last_read", 0)
-        val = x.get(target_sort)
-        if target_sort == "upload_date":
-            return val if val and val != LEGACY_UPLOAD_DATE else ""
-        if val == "-" or val is None:
-            return -1
-        try:
-            return float(val)
-        except (TypeError, ValueError):
-            return -1
-
-    filtered.sort(key=sort_key, reverse=(sort_order == "desc"))
-    total_items = len(filtered)
-    total_pages = max(1, (total_items + limit - 1) // limit)
-    start_idx = (page - 1) * limit
-    page_items = filtered[start_idx:start_idx + limit]
+    result = LIBRARY_INDEX.query(
+        filters=filters,
+        user_data=user_data,
+        sort_by=target_sort,
+        sort_order=sort_order,
+        page=page,
+        limit=limit,
+        random_one=bool(data.get("random")),
+    )
+    if data.get("random"):
+        random_novel = result.get("random")
+        return jsonify({"random_id": novel_key(random_novel) if random_novel else None})
 
     return jsonify({
-        "novels": [_public_novel(n) for n in page_items],
-        "total": total_items,
-        "totalPages": total_pages,
-        "currentPage": page,
+        "novels": [_public_novel(n) for n in result["items"]],
+        "total": result["total"],
+        "totalPages": result["total_pages"],
+        "currentPage": result["page"],
         "userData": user_data,
     })
 
@@ -4323,7 +4178,7 @@ def edit_metadata():
     filename = str(data.get("filename", "")).strip()
     if not filename:
         return json_error("'filename' must be a non-empty string.", 400)
-    novel = next((n for n in load_gallery_data() if n.get("filename") == filename), None)
+    novel = find_novel(filename)
     if novel is None:
         return json_error("Unknown novel filename.", 404)
     if (session.get("user_email", "") not in ADMIN_EMAILS
@@ -4333,14 +4188,19 @@ def edit_metadata():
     if cover_url and not cover_url.startswith(("http://", "https://")):
         cover_url = ""
 
-    save_custom_meta_entry(filename, {
+    custom_entry = {
         "title_en": str(data.get("title_en", "")),
         "title_kr": str(data.get("title_kr", "")),
         "author": str(data.get("author", "")),
         "cover": cover_url,
         "tags": dedupe_tags([t.strip() for t in str(data.get("tags", "")).split(",") if t.strip()]),
         "synopsis": str(data.get("synopsis", "")),
-    })
+    }
+    save_custom_meta_entry(filename, custom_entry)
+    updated_novel = dict(novel)
+    updated_novel["is_custom"] = True
+    _apply_custom_overrides(updated_novel, custom_entry)
+    LIBRARY_INDEX.upsert(updated_novel)
     return jsonify({"status": "success"})
 
 # ====================================================================
@@ -4375,15 +4235,35 @@ def admin_access():
                         _extract_epub_safely(reading_epub, final_dir)
                         ch_count = _count_readable_chapters(final_dir)
 
+                        approved_at = datetime.now(timezone.utc).isoformat()
+
                         def approve_record(store):
                             if upload_id in store:
                                 store[upload_id]["approved"] = True
                                 store[upload_id]["status"] = "approved"
                                 store[upload_id]["chapters"] = ch_count
-                                store[upload_id]["approved_at"] = datetime.now(timezone.utc).isoformat()
+                                store[upload_id]["approved_at"] = approved_at
 
                         mutate_user_uploads(approve_record, shadow_reason="upload_approve")
-                        message = f"Approved and published novel '{record.get('title_en')}'!"
+                        indexed_record = {
+                            **record,
+                            "approved": True,
+                            "status": "approved",
+                            "chapters": ch_count,
+                            "approved_at": approved_at,
+                        }
+                        indexed_item = _uploaded_gallery_item(upload_id, indexed_record)
+                        try:
+                            LIBRARY_INDEX.upsert(
+                                indexed_item,
+                                content=_indexed_novel_content(indexed_item),
+                            )
+                            message = f"Approved and published novel '{record.get('title_en')}'!"
+                        except LibraryIndexUnavailable:
+                            message = (
+                                "Upload was approved, but the library index update failed. "
+                                "Run the controlled reindex before serving the title."
+                            )
                     except Exception as exc:
                         message = f"Failed to extract EPUB: {exc}"
 
@@ -4413,7 +4293,14 @@ def admin_access():
                     store.pop(upload_id, None)
 
                 mutate_user_uploads(remove_record, shadow_reason="upload_reject")
-                message = f"Rejected and deleted upload '{record.get('title_en')}'."
+                try:
+                    LIBRARY_INDEX.delete_alias(upload_id)
+                    message = f"Rejected and deleted upload '{record.get('title_en')}'."
+                except LibraryIndexUnavailable:
+                    message = (
+                        "Upload was rejected, but the library index update failed. "
+                        "Run the controlled reindex."
+                    )
 
         elif form_action == "add_ip_exemption":
             raw_ip = request.form.get("ip", "").strip()
@@ -4951,39 +4838,6 @@ def download_file(novel_ref):
         log_download_limit_exceeded(user_email, source_label, client_ip)
         return "Daily limit reached.", 429
 
-    if not want_raw:
-        possible_ids = []
-        if novel.get("id"):
-            possible_ids.append(str(novel["id"]))
-        for sid in (novel.get("_source_ids") or []):
-            if sid and str(sid) not in possible_ids:
-                possible_ids.append(str(sid))
-        for nid in possible_ids:
-            struct_dir = os.path.join(STRUCTURED_OUTPUT_DIR, nid)
-            if os.path.isdir(struct_dir):
-                try:
-                    epubs = [os.path.join(struct_dir, f) for f in os.listdir(struct_dir) if f.lower().endswith(".epub")]
-                    if epubs and os.path.isfile(epubs[0]):
-                        novel["translated_epub_path"] = epubs[0]
-                        novel["translated_original_name"] = os.path.basename(epubs[0])
-                        break
-                except OSError:
-                    pass
-
-    if want_raw and not novel.get("raw_epub_path"):
-        possible_ids = []
-        if novel.get("id"):
-            possible_ids.append(str(novel["id"]))
-        for sid in (novel.get("_source_ids") or []):
-            if sid and str(sid) not in possible_ids:
-                possible_ids.append(str(sid))
-        batched_map = _scan_batched_epubs()
-        for nid in possible_ids:
-            if nid in batched_map and os.path.isfile(batched_map[nid]):
-                novel["raw_epub_path"] = batched_map[nid]
-                novel["raw_original_name"] = os.path.basename(batched_map[nid])
-                break
-
     local_path = (
         novel.get("raw_epub_path") if want_raw else novel.get("translated_epub_path")
     )
@@ -5203,34 +5057,11 @@ def epub_package_init():
     if _active_epub_sessions_for_user(user_email) >= MAX_EPUB_PACKAGE_SESSIONS_PER_USER:
         return jsonify({"error": "Too many active EPUB package sessions."}), 429
 
-    local_path = None
-    if not want_raw:
-        possible_ids = []
-        if novel.get("id"): possible_ids.append(str(novel["id"]))
-        for sid in (novel.get("_source_ids") or []):
-            if sid and str(sid) not in possible_ids: possible_ids.append(str(sid))
-        for nid in possible_ids:
-            struct_dir = os.path.join(STRUCTURED_OUTPUT_DIR, nid)
-            if os.path.isdir(struct_dir):
-                epubs = [os.path.join(struct_dir, f) for f in os.listdir(struct_dir) if f.lower().endswith(".epub")]
-                if epubs and os.path.isfile(epubs[0]):
-                    local_path = epubs[0]
-                    novel["translated_original_name"] = os.path.basename(epubs[0])
-                    break
-    if want_raw and not local_path:
-        possible_ids = []
-        if novel.get("id"): possible_ids.append(str(novel["id"]))
-        for sid in (novel.get("_source_ids") or []):
-            if sid and str(sid) not in possible_ids: possible_ids.append(str(sid))
-        batched_map = _scan_batched_epubs()
-        for nid in possible_ids:
-            if nid in batched_map and os.path.isfile(batched_map[nid]):
-                local_path = batched_map[nid]
-                novel["raw_original_name"] = os.path.basename(batched_map[nid])
-                break
-
-    if not local_path or not os.path.isfile(local_path):
-        local_path = novel.get("raw_epub_path") if want_raw else novel.get("translated_epub_path")
+    local_path = (
+        novel.get("raw_epub_path")
+        if want_raw
+        else novel.get("translated_epub_path")
+    )
 
     if not local_path or not os.path.isfile(local_path):
         return jsonify({"error": "Base EPUB not available locally on server"}), 404

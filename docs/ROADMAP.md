@@ -223,12 +223,17 @@ state still prevents increasing Gunicorn workers without measurement and review.
 
 ## Phase 8 — persistent library/chapter index
 
-- define stable novel id and alternate keys;
-- scan/import outside request path;
-- persist chapter counts/paths/metadata/hashes;
-- replace linear `find_novel` and repeated `os.walk` calls;
-- use indexed query/search;
-- consider SQLite FTS5 for title/search.
+Repository/local/CI implementation is complete; production enablement is not
+claimed:
+
+- stable internal ids plus filename/library/source aliases;
+- explicit candidate build outside request paths with integrity/FK/count checks and
+  atomic publication;
+- persistent metadata/tags/hashes and ordered chapter/title/image discovery;
+- indexed `find_novel`, reader discovery and server-side query/filter/sort/page;
+- optional SQLite FTS5 trigram search with compatible fallback;
+- incremental custom-metadata and upload approval/rejection maintenance;
+- fail-closed runtime, tests, benchmark and rollout/rollback runbook.
 
 ## Phase 9 — frontend/static split
 
@@ -290,14 +295,14 @@ After process-local state is removed/split:
 4. SQLite primary reads
 5. stop legacy writes domain-by-domain
 6. production-enable the implemented Telethon split after inventory
-7. persistent library index/frontend split (next repository-side stage)
-8. security/observability and measured performance work
+7. production-enable the implemented persistent library index after inventory
+8. security/observability and measured performance work (next repository-side stage)
 9. R2/Cloudflare optimization
 ```
 
-Without live-production inputs, Phase 8 is the next independent repository-side
-stage; production read-cutover, packager and Telegram service enablement remain
-operator-gated rather than guessed.
+Without live-production inputs, Phase 11 security/observability is the next
+independent repository-side stage; state read-cutover, library index, packager and
+Telegram production enablement remain operator-gated rather than guessed.
 
 ## Explicit non-goals for now
 

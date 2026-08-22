@@ -65,6 +65,7 @@ The launcher:
 - if the local library is empty and EPUB fixtures are available, seeds once;
 - ensures a compatible SQLite shadow exists;
 - verifies full `user_data.json`/SQLite semantic parity;
+- atomically rebuilds and verifies the persistent library/chapter index;
 - starts the site on `127.0.0.1:5004`.
 
 Explicit reseed:
@@ -215,13 +216,12 @@ Bounded shadow-log audit (one process log per invocation):
 2. Important state/caches/rate limits are process-local.
 3. Process-local caches/rate controls still constrain web scaling; the repository
    Telethon split is complete but not yet production-enabled.
-4. Library requests sort/filter a full in-memory list.
-5. Directory scans/`os.walk` are used for chapter/library discovery.
-6. Novel lookup uses repeated linear scans.
-7. Frontend HTML files contain large inline CSS/JS.
-8. Community uses frequent polling.
-9. User EPUB sanitization uses regex-style HTML cleaning rather than a robust allowlist parser.
-11. State-changing routes need a systematic CSRF/same-origin review.
+4. The persistent library/chapter index is implemented locally/in CI but not yet
+   confirmed or measured on production storage.
+5. Frontend HTML files contain large inline CSS/JS.
+6. Community uses frequent polling.
+7. User EPUB sanitization uses regex-style HTML cleaning rather than a robust allowlist parser.
+8. State-changing routes need a systematic CSRF/same-origin review.
 
 ## Target architecture
 
@@ -253,8 +253,8 @@ Avoid a full rewrite. Keep Flask and preserve API/UI behavior while extracting r
 7. Enable the already implemented persistent async packager only after inventory
    confirms its Block Volume/env/systemd paths.
 8. Inventory-gate and operationally enable the already implemented Telethon split.
-9. Build the persistent library/chapter index (next independent repository stage),
-   then later frontend/R2 optimizations.
+9. Production-enable the implemented persistent library index only after explicit
+   path inventory; continue repository-side security/observability work meanwhile.
 
 ## Where to read next
 
@@ -265,6 +265,7 @@ Avoid a full rewrite. Keep Flask and preserve API/UI behavior while extracting r
 - `docs/BACKUP_RESTORE.md` — executable migration, backup, restore and retention runbook.
 - `docs/ASYNC_PACKAGER.md` — queue API, worker operation, recovery and rollout.
 - `docs/TELEGRAM_SERVICE.md` — isolated client boundary, rollout and rollback.
+- `docs/LIBRARY_INDEX.md` — indexed runtime, rebuild, verification and rollout.
 - `docs/DATA_MODEL.md` — files and SQLite ownership.
 - `docs/ROADMAP.md` — implementation sequence.
 - `docs/DECISIONS.md` — why these choices were made.

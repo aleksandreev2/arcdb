@@ -45,6 +45,12 @@ PYTHONPATH=. python scripts/verify_migration_backup.py \
 For a rehearsal that must not change the configured SQLite target, add
 `--no-promote` to the migration command.
 
+The library index and package-jobs database are operational/derived databases, not
+schema-v3 state backups. Migration excludes their explicitly configured paths and
+WAL/SHM sidecars from the immutable legacy snapshot while still preserving every
+unknown metadata file. Prefer storing them outside the legacy metadata root; rebuild
+the library index separately with `scripts/reindex_library.py`.
+
 ## 2. Create a WAL-aware operational backup
 
 Choose a new directory for every backup. Existing directories are never overwritten:

@@ -477,3 +477,34 @@ constant-memory downloads and the existing browser API while giving the client a
 single lifecycle. A persistent queue is unnecessary for interactive media streams;
 the service owns no user-state migration and can fail independently with a bounded
 503 response.
+
+## ADR-027 — Keep library discovery in a separate rebuildable SQLite index
+
+Status: accepted and implemented for repository/local/CI runtime.
+
+Decision:
+
+- keep `library_index.sqlite3` separate from candidate state schema v3;
+- assign deterministic internal ids and preserve all existing external identifiers
+  as explicit aliases;
+- perform metadata/content scans only during an explicit sibling-candidate rebuild,
+  validate SQLite integrity/counts, fsync and atomically publish;
+- query the index read-only for library, novel and reader discovery and fail closed
+  when it is missing or incompatible;
+- update custom metadata and approved/rejected uploads incrementally;
+- use optional trigram FTS5 with a SQL substring fallback;
+- treat the database as private derived data, never as user-state backup or proof of
+  production migration.
+
+Reasoning:
+
+Coupling the operational index to schema-v3 state would weaken the candidate-first
+user-data migration and make a derived cache part of rollback authority. Explicit
+rebuild and fail-closed reads remove full storage scans and linear lookup from hot
+paths without changing API identifiers or risking user state. SQLite is sufficient
+for the single-VM architecture and avoids an unnecessary search service.
+
+The index also removes incidental custom-metadata reads from `/api/library`.
+Therefore bounded shadow observation uses an explicit admin-only, payload-free
+state-read probe for all schema-v3 domains instead of depending on side effects of a
+filesystem scan. This keeps coverage stable as request paths become more efficient.

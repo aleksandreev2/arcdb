@@ -67,6 +67,15 @@ def main() -> int:
     parser.add_argument("--custom-meta")
     parser.add_argument("--allowed-emails")
     parser.add_argument(
+        "--exclude-derived-db",
+        action="append",
+        default=[],
+        help=(
+            "Explicit operational/derived SQLite path to exclude from legacy-source "
+            "hashing; may be repeated. Its -wal/-shm sidecars are excluded too."
+        ),
+    )
+    parser.add_argument(
         "--report",
         help="Optional new JSON report path; existing files are never overwritten",
     )
@@ -81,6 +90,7 @@ def main() -> int:
         user_uploads_path=_path(args.user_uploads),
         custom_meta_path=_path(args.custom_meta),
         allowed_emails_path=_path(args.allowed_emails),
+        derived_database_paths=tuple(Path(value) for value in args.exclude_derived_db),
     )
     report = verify_read_cutover_readiness(paths)
     if args.report:
