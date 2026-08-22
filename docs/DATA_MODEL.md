@@ -184,6 +184,25 @@ These are separate concerns and must not be migrated accidentally as part of use
 - library discovery/index data;
 - Cloudflare configuration.
 
+### Operational package job database
+
+Async EPUB jobs use a separate `package_jobs.sqlite3` WAL database. It is not part
+of state schema v3, is not populated from legacy JSON and does not affect read/write
+cutover authority.
+
+`jobs` stores:
+
+- opaque job id, kind, owner email and active-job dedupe key;
+- `queued|processing|done|failed|cancelled` state;
+- private worker payload and sanitized result/error metadata;
+- attempts/max attempts, progress, timeout and cancellation flag;
+- worker claim, heartbeat, available/start/finish/update/expiry timestamps.
+
+The web API never returns payload JSON, filesystem paths or worker identity. Package
+session directories and the queue are operational/rebuildable state on Block Volume;
+they are retained only for a bounded download/retry window and are not user library
+or account records.
+
 ## 6. Local development tree
 
 Typical ignored tree:
@@ -195,6 +214,7 @@ data/
 ├── sqlite-backups/
 ├── shadow-sidecar-backups/
 ├── metadata/
+│   ├── package_jobs.sqlite3
 │   ├── users.json
 │   ├── user_data.json
 │   ├── collections.json

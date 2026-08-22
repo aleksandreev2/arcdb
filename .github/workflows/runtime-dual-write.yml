@@ -30,6 +30,7 @@ jobs:
           tests/test_runtime_users.py
           tests/test_runtime_metadata.py
           tests/test_epub_io.py
+          tests/test_jobs.py
           tests/test_tracked_runtime.py
           tests/test_dev_seed.py
 
@@ -37,9 +38,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ARCHIVEDB_AUTH_TEST_MODE=1 CI=1 python scripts/dev_bootstrap.py > server.log 2>&1 &
+          ARCHIVEDB_AUTH_TEST_MODE=1 ARCHIVEDB_START_PACKAGER=0 CI=1 python scripts/dev_bootstrap.py > server.log 2>&1 &
           BOOT_PID=$!
+          .venv/bin/python scripts/run_packager.py > packager.log 2>&1 &
+          PACKAGER_PID=$!
           cleanup() {
+            kill "$PACKAGER_PID" 2>/dev/null || true
             pkill -P "$BOOT_PID" 2>/dev/null || true
             kill "$BOOT_PID" 2>/dev/null || true
           }
@@ -125,5 +129,10 @@ jobs:
 
           if grep -q '\[STATE-DUAL-WRITE\]\[ERROR\]' server.log; then
             cat server.log
+            exit 1
+          fi
+
+          if ! kill -0 "$PACKAGER_PID" 2>/dev/null; then
+            cat packager.log
             exit 1
           fi

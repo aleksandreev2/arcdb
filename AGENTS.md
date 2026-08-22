@@ -79,6 +79,10 @@ Completed:
 - WAL-aware SQLite online backup, sanitized checksum manifest, independent runtime restore verification and new-target-only restore tooling.
 - behavior-compatible Flask runtime and templates tracked directly under `arcdb/`; local startup and runtime CI no longer materialize `.b64` baseline parts or apply overlays.
 - bounded upload/EPUB I/O: one upload fsync before atomic publish, structure/CRC/path/bomb validation, atomic extraction, owner/size/count-limited package sessions and entry-streamed finalization.
+- persistent async EPUB jobs: dedicated SQLite WAL queue, HTTP 202/status/cancel,
+  separate packager process, retries/attempts/heartbeat/timeout/stale recovery,
+  expiry cleanup and atomic result publication. Repository/local/CI implementation
+  is complete; production service enablement is not claimed.
 
 Still pending:
 
@@ -86,7 +90,6 @@ Still pending:
 - removal of JSON writes;
 - production data/runtime cutover;
 - persistent library index;
-- job/packager split;
 - Telethon service split;
 - R2/static edge migration.
 
@@ -218,6 +221,9 @@ At minimum:
 - for any migration, prove source files were not modified;
 - for SQLite backup changes, prove WAL content is captured, corruption is rejected and an independent runtime restore succeeds;
 - for upload/EPUB changes, cover normal and malformed EPUBs, traversal, links, duplicate/colliding paths, entry/count/expanded-size/compression limits, Unicode paths, partial cleanup and real authenticated packaging;
+- for persistent jobs, cover enqueue/claim/success/failure/retry, queued and
+  processing cancellation, timeout, stale restart recovery, expiry cleanup and the
+  real web -> worker -> download flow;
 - keep the explicit read-cutover preflight green and its report free of paths, identities and payloads;
 - keep the bounded shadow-observation audit and SQLite-canary -> legacy rollback rehearsal green;
 - update docs when architecture, storage ownership or rollout state changes.
@@ -243,6 +249,7 @@ Start here, then read:
 - `docs/STORAGE_MIGRATION.md` — SQLite migration phases.
 - `docs/PRODUCTION_SAFETY.md` — deployment/migration invariants and rollback.
 - `docs/BACKUP_RESTORE.md` — exact migration, operational backup, restore and retention procedure.
+- `docs/ASYNC_PACKAGER.md` — persistent package queue, worker and rollout/rollback.
 - `docs/PRODUCTION_INVENTORY.md` — exact read-only live discovery/inventory/reconciliation procedure.
 - `docs/ROADMAP.md` — ordered implementation plan.
 - `docs/DECISIONS.md` — architectural decisions and rationale.

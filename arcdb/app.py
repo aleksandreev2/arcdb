@@ -39,7 +39,6 @@ import shutil
 import smtplib
 import threading
 import time
-import tempfile
 import uuid
 import zipfile
 from datetime import date, datetime, timedelta, timezone
@@ -74,10 +73,9 @@ from arcdb.epub_io import (
     copy_zip_entry_atomic,
     extract_epub_safely,
     iter_epub_text_entries,
-    normalize_archive_path,
-    package_epub_streaming,
     validate_epub_archive,
 )
+from arcdb.jobs import JobStore
 
 # ====================================================================
 # 1. CONFIGURATION & ENVIRONMENT LOADING
@@ -225,8 +223,15 @@ MAX_EPUB_PACKAGE_SESSIONS_PER_USER = _env_int(
 )
 EPUB_PACKAGE_SESSION_TTL_SECONDS = _env_int(
     "EPUB_PACKAGE_SESSION_TTL_SECONDS",
-    15 * 60,
+    24 * 60 * 60,
 )
+PACKAGE_JOBS_DB_PATH = _env_str(
+    "PACKAGE_JOBS_DB_PATH",
+    os.path.join(META_DIR, "package_jobs.sqlite3"),
+)
+PACKAGE_JOB_MAX_ATTEMPTS = _env_int("PACKAGE_JOB_MAX_ATTEMPTS", 3)
+PACKAGE_JOB_TIMEOUT_SECONDS = _env_int("PACKAGE_JOB_TIMEOUT_SECONDS", 15 * 60)
+PACKAGE_JOB_RETENTION_SECONDS = _env_int("PACKAGE_JOB_RETENTION_SECONDS", 24 * 60 * 60)
 EPUB_LIMITS = EpubLimits(
     max_entries=MAX_EPUB_FILES,
     max_entry_bytes=MAX_EPUB_ENTRY_BYTES,
@@ -5183,9 +5188,10 @@ def download_file(novel_ref):
 
 EPUB_PACKAGE_SESSIONS_DIR = _env_str(
     "EPUB_PACKAGE_SESSIONS_DIR",
-    os.path.join(tempfile.gettempdir(), "epub_package_sessions"),
+    os.path.join(META_DIR, "epub_package_sessions"),
 )
 os.makedirs(EPUB_PACKAGE_SESSIONS_DIR, exist_ok=True)
+PACKAGE_JOB_STORE = JobStore(PACKAGE_JOBS_DB_PATH)
 _EPUB_PACKAGE_SESSION_RE = re.compile(r"^[0-9a-f]{32}$")
 _EPUB_PACKAGE_LOCK = threading.Lock()
 _ALLOWED_PACKAGE_IMAGE_MIMES = {
@@ -5417,6 +5423,8 @@ def epub_package_upload_batch(session_id):
     sess_dir, meta = _load_owned_epub_session(session_id)
     if not sess_dir:
         return jsonify({"error": "Session expired or not found"}), 404
+    if PACKAGE_JOB_STORE.get_active_by_dedupe(f"epub_package:{session_id}"):
+        return jsonify({"error": "This package session is already finalized."}), 409
 
     images_dir = os.path.join(sess_dir, "images")
     url_map_file = os.path.join(sess_dir, "url_map.json")
@@ -5528,92 +5536,73 @@ def epub_package_upload_batch(session_id):
 @app.route("/api/epub_package/finalize/<session_id>", methods=["POST"])
 @login_required
 def epub_package_finalize(session_id):
-    sess_dir, meta = _load_owned_epub_session(session_id)
+    return _enqueue_epub_package_job(session_id)
+
+
+def _job_response(job):
+    response = {
+        "job_id": job.job_id,
+        "kind": job.kind,
+        "state": job.state,
+        "progress": job.progress,
+        "attempts": job.attempts,
+        "max_attempts": job.max_attempts,
+        "created_at": job.created_at,
+        "updated_at": job.updated_at,
+        "status_url": f"/api/jobs/{job.job_id}",
+    }
+    if job.state == "done" and job.result:
+        response.update(job.result)
+    if job.state == "failed":
+        response["error"] = {
+            "code": job.error_code or "failed",
+            "message": job.error_message or "The package job failed.",
+        }
+    return response
+
+
+def _enqueue_epub_package_job(session_id):
+    sess_dir, _meta = _load_owned_epub_session(session_id)
     if not sess_dir:
         return jsonify({"error": "Session not found"}), 404
+    job, created = PACKAGE_JOB_STORE.enqueue(
+        kind="epub_package",
+        owner_email=session.get("user_email", ""),
+        payload={"session_id": session_id},
+        dedupe_key=f"epub_package:{session_id}",
+        max_attempts=PACKAGE_JOB_MAX_ATTEMPTS,
+        timeout_seconds=PACKAGE_JOB_TIMEOUT_SECONDS,
+        retention_seconds=PACKAGE_JOB_RETENTION_SECONDS,
+    )
+    response = _job_response(job)
+    response["created"] = created
+    return jsonify(response), 202
 
-    base_epub = os.path.join(sess_dir, "base.epub")
-    final_epub = os.path.join(sess_dir, "final.epub")
-    images_dir = os.path.join(sess_dir, "images")
-    url_map_file = os.path.join(sess_dir, "url_map.json")
 
-    url_map = read_json_file(url_map_file, {})
-    if not isinstance(url_map, dict):
-        return jsonify({"error": "Package session mapping is invalid."}), 400
+@app.route("/api/jobs/package", methods=["POST"])
+@login_required
+def enqueue_package_job():
+    data = request.get_json(force=True, silent=True) or {}
+    return _enqueue_epub_package_job(str(data.get("session_id") or "").strip())
 
-    struct_novel_dir = meta.get("struct_novel_dir")
-    if not struct_novel_dir and meta.get("novel_ref"):
-        novel = find_novel(meta["novel_ref"])
-        if novel:
-            possible_ids = []
-            if novel.get("id"): possible_ids.append(str(novel["id"]))
-            for sid in (novel.get("_source_ids") or []):
-                if sid and str(sid) not in possible_ids: possible_ids.append(str(sid))
-            for nid in possible_ids:
-                sdir = os.path.join(STRUCTURED_OUTPUT_DIR, str(nid))
-                if os.path.isdir(sdir):
-                    struct_novel_dir = sdir
-                    break
 
-    try:
-        with _EPUB_PACKAGE_LOCK:
-            summary = _validate_epub_archive(base_epub)
-            opf_dir = summary.opf_path.rsplit("/", 1)[0] if "/" in summary.opf_path else ""
-            in_epub_images_dir = f"{opf_dir}/Images" if opf_dir else "Images"
-            injected_files = {}
+@app.route("/api/jobs/<job_id>")
+@login_required
+def get_job(job_id):
+    job = PACKAGE_JOB_STORE.get_owned(job_id, session.get("user_email", ""))
+    if job is None:
+        return jsonify({"error": "Job not found"}), 404
+    return jsonify(_job_response(job))
 
-            if struct_novel_dir and os.path.isdir(struct_novel_dir):
-                for folder_name in ("images", "Images"):
-                    local_img_dir = os.path.join(struct_novel_dir, folder_name)
-                    if not os.path.isdir(local_img_dir) or os.path.islink(local_img_dir):
-                        continue
-                    for image_filename in sorted(os.listdir(local_img_dir)):
-                        if not image_filename.casefold().endswith(
-                            (".webp", ".jpg", ".jpeg", ".png", ".gif", ".svg", ".bmp")
-                        ):
-                            continue
-                        image_path = os.path.join(local_img_dir, image_filename)
-                        if os.path.islink(image_path) or not os.path.isfile(image_path):
-                            continue
-                        target, _ = normalize_archive_path(
-                            f"{in_epub_images_dir}/{image_filename}"
-                        )
-                        injected_files[target] = image_path
 
-            safe_url_map = {}
-            for original_url, safe_filename in url_map.items():
-                original_url = str(original_url or "").strip()
-                safe_filename = str(safe_filename or "").strip()
-                if not re.fullmatch(r"img_\d{4,}\.(?:jpg|png|gif|webp|bmp)", safe_filename, re.I):
-                    raise EpubSafetyError("The package session contains an unsafe image name.")
-                image_path = resolve_under(images_dir, safe_filename)
-                if not image_path or os.path.islink(image_path) or not os.path.isfile(image_path):
-                    raise EpubSafetyError("A package session image is missing or unsafe.")
-                target, _ = normalize_archive_path(
-                    f"{in_epub_images_dir}/{safe_filename}"
-                )
-                injected_files[target] = image_path
-                safe_url_map[original_url] = safe_filename
-
-            session_bytes, _ = _epub_package_session_usage(sess_dir)
-            if os.path.isfile(final_epub):
-                session_bytes -= os.path.getsize(final_epub)
-            remaining_bytes = MAX_EPUB_PACKAGE_SESSION_BYTES - session_bytes
-            if remaining_bytes <= 0:
-                raise EpubSafetyError("The package session exceeds its storage limit.")
-            package_epub_streaming(
-                base_epub,
-                final_epub,
-                injected_files=injected_files,
-                url_map=safe_url_map,
-                limits=_epub_limits(),
-                max_output_bytes=remaining_bytes,
-            )
-        return jsonify({"status": "ok", "download_url": f"/api/epub_package/download/{session_id}"})
-    except EpubSafetyError as exc:
-        return jsonify({"error": f"Packaging failed: {exc}"}), 400
-    except Exception as e:
-        return jsonify({"error": f"Packaging failed: {e}"}), 500
+@app.route("/api/jobs/<job_id>/cancel", methods=["POST"])
+@login_required
+def cancel_job(job_id):
+    state = PACKAGE_JOB_STORE.request_cancel(job_id, session.get("user_email", ""))
+    if state is None:
+        return jsonify({"error": "Job not found"}), 404
+    job = PACKAGE_JOB_STORE.get_owned(job_id, session.get("user_email", ""))
+    return jsonify(_job_response(job)), 202 if state == "processing" else 200
 
 @app.route("/api/epub_package/download/<session_id>")
 @login_required

@@ -16,7 +16,7 @@ import unicodedata
 import uuid
 import zipfile
 from pathlib import Path
-from typing import BinaryIO, Iterator, Mapping
+from typing import BinaryIO, Callable, Iterator, Mapping
 import xml.etree.ElementTree as ET
 
 
@@ -284,6 +284,7 @@ def _verify_archive_contents(
     archive: zipfile.ZipFile,
     entries: tuple[_ArchiveEntry, ...],
     limits: EpubLimits,
+    checkpoint: Callable[[], None] | None = None,
 ) -> None:
     actual_total = 0
     for entry in entries:
@@ -298,18 +299,24 @@ def _verify_archive_contents(
                 actual_size += len(chunk)
                 if actual_size > limits.max_entry_bytes:
                     raise EpubSafetyError("An EPUB entry exceeded its decompression limit.")
+                if checkpoint is not None:
+                    checkpoint()
             actual_total += actual_size
             if actual_total > limits.max_total_uncompressed_bytes:
                 raise EpubSafetyError("The EPUB exceeded its decompression limit.")
 
 
-def validate_epub_archive(path: str | os.PathLike[str], limits: EpubLimits) -> EpubArchiveSummary:
+def validate_epub_archive(
+    path: str | os.PathLike[str],
+    limits: EpubLimits,
+    checkpoint: Callable[[], None] | None = None,
+) -> EpubArchiveSummary:
     try:
         if not zipfile.is_zipfile(path):
             raise EpubSafetyError("The selected EPUB is not a valid ZIP/EPUB archive.")
         with zipfile.ZipFile(path, "r") as archive:
             summary, entries = _inspect_archive(archive, limits)
-            _verify_archive_contents(archive, entries, limits)
+            _verify_archive_contents(archive, entries, limits, checkpoint)
             return summary
     except EpubSafetyError:
         raise
@@ -367,6 +374,7 @@ def _copy_bounded_stream(
     source: BinaryIO,
     destination: BinaryIO,
     max_bytes: int,
+    checkpoint: Callable[[], None] | None = None,
 ) -> int:
     total = 0
     while True:
@@ -377,6 +385,8 @@ def _copy_bounded_stream(
         if total > max_bytes:
             raise EpubSafetyError("An EPUB entry exceeded its decompression limit.")
         destination.write(chunk)
+        if checkpoint is not None:
+            checkpoint()
     return total
 
 
@@ -526,6 +536,8 @@ def package_epub_streaming(
     url_map: Mapping[str, str],
     limits: EpubLimits,
     max_output_bytes: int,
+    progress_callback: Callable[[int, int], None] | None = None,
+    cancellation_check: Callable[[], None] | None = None,
 ) -> EpubArchiveSummary:
     """Rewrite bounded text entries while streaming every other ZIP entry."""
 
@@ -534,6 +546,10 @@ def package_epub_streaming(
     output_path = os.path.abspath(os.fspath(output_epub))
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
     temporary_path = f"{output_path}.tmp.{os.getpid()}.{uuid.uuid4().hex}"
+
+    def checkpoint() -> None:
+        if cancellation_check is not None:
+            cancellation_check()
 
     normalized_injections: dict[str, tuple[str, str]] = {}
     injected_total = 0
@@ -553,6 +569,7 @@ def package_epub_streaming(
         normalized_injections[key] = (target, source_path)
 
     try:
+        checkpoint()
         with zipfile.ZipFile(base_epub, "r") as source_archive:
             source_summary, entries = _inspect_archive(source_archive, limits)
             by_key = {entry.key: entry for entry in entries}
@@ -590,6 +607,8 @@ def package_epub_streaming(
                 posixpath.basename(target): target
                 for target, _source_path in normalized_injections.values()
             }
+            total_steps = max(1, len(entries) + len(normalized_injections))
+            completed_steps = 0
             with open(temporary_path, "xb") as raw_output:
                 bounded_output = _BoundedWriter(raw_output, max_output_bytes)
                 with zipfile.ZipFile(bounded_output, "w", allowZip64=True) as output_archive:
@@ -599,14 +618,21 @@ def package_epub_streaming(
                     output_archive.writestr(
                         "mimetype", mimetype_bytes, compress_type=zipfile.ZIP_STORED
                     )
+                    completed_steps += 1
+                    if progress_callback is not None:
+                        progress_callback(completed_steps, total_steps)
 
                     for entry in entries:
+                        checkpoint()
                         if entry.key == "mimetype" or entry.key in normalized_injections:
                             continue
                         target_name = entry.path + "/" if entry.info.is_dir() else entry.path
                         target_info = _clone_zip_info(entry.info, target_name)
                         if entry.info.is_dir():
                             output_archive.writestr(target_info, b"")
+                            completed_steps += 1
+                            if progress_callback is not None:
+                                progress_callback(completed_steps, total_steps)
                             continue
 
                         is_text = entry.path.casefold().endswith(HTML_SUFFIXES)
@@ -653,16 +679,26 @@ def package_epub_streaming(
                                     "A rewritten EPUB text entry exceeds its size limit."
                                 )
                             output_archive.writestr(target_info, encoded)
+                            completed_steps += 1
+                            if progress_callback is not None:
+                                progress_callback(completed_steps, total_steps)
                             continue
 
                         with source_archive.open(entry.info, "r") as source, output_archive.open(
                             target_info, "w", force_zip64=True
                         ) as destination:
                             _copy_bounded_stream(
-                                source, destination, limits.max_entry_bytes
+                                source,
+                                destination,
+                                limits.max_entry_bytes,
+                                checkpoint,
                             )
+                        completed_steps += 1
+                        if progress_callback is not None:
+                            progress_callback(completed_steps, total_steps)
 
                     for target, source_path in sorted(normalized_injections.values()):
+                        checkpoint()
                         target_info = zipfile.ZipInfo(target)
                         target_info.compress_type = zipfile.ZIP_DEFLATED
                         target_info.external_attr = 0o100644 << 16
@@ -670,14 +706,22 @@ def package_epub_streaming(
                             target_info, "w", force_zip64=True
                         ) as destination:
                             _copy_bounded_stream(
-                                source, destination, limits.max_entry_bytes
+                                source,
+                                destination,
+                                limits.max_entry_bytes,
+                                checkpoint,
                             )
+                        completed_steps += 1
+                        if progress_callback is not None:
+                            progress_callback(completed_steps, total_steps)
                 raw_output.flush()
                 os.fsync(raw_output.fileno())
 
         if os.path.getsize(temporary_path) > max_output_bytes:
             raise EpubSafetyError("The packaged EPUB exceeds the session output limit.")
-        result = validate_epub_archive(temporary_path, limits)
+        checkpoint()
+        result = validate_epub_archive(temporary_path, limits, checkpoint)
+        checkpoint()
         os.replace(temporary_path, output_path)
         return result
     except (

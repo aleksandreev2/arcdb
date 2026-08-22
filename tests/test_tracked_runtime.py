@@ -32,6 +32,12 @@ class TrackedRuntimeSourceTests(unittest.TestCase):
 
     def test_required_runtime_files_are_tracked(self) -> None:
         self.assertTrue(TRACKED_APP.is_file())
+        self.assertTrue((ROOT / "arcdb" / "jobs.py").is_file())
+        self.assertTrue((ROOT / "arcdb" / "package_worker.py").is_file())
+        self.assertTrue((ROOT / "scripts" / "run_packager.py").is_file())
+        self.assertTrue(
+            (ROOT / "deploy" / "systemd" / "arcdb-packager.service.example").is_file()
+        )
         expected_templates = {
             "community.html",
             "forgot_password.html",
@@ -106,13 +112,23 @@ class TrackedRuntimeSourceTests(unittest.TestCase):
 
     def test_runtime_uses_bounded_epub_io_paths(self) -> None:
         text = TRACKED_APP.read_text(encoding="utf-8")
+        worker = (ROOT / "arcdb" / "package_worker.py").read_text(encoding="utf-8")
         self.assertIn("copy_upload_limited(storage.stream", text)
-        self.assertIn("package_epub_streaming(", text)
+        self.assertNotIn("package_epub_streaming(", text)
+        self.assertIn("package_epub_streaming(", worker)
+        self.assertNotIn("arcdb.app", worker)
+        self.assertIn("return _enqueue_epub_package_job(session_id)", text)
+        self.assertIn('return jsonify(response), 202', text)
         self.assertIn("_load_owned_epub_session(session_id)", text)
         self.assertIn("copy_zip_entry_atomic(", text)
         self.assertNotIn("all_entries =", text)
         self.assertNotIn("file_storage.save(", text)
         self.assertNotIn("out.write(z.read(", text)
+        gallery = (ROOT / "arcdb" / "templates" / "gallery.html").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("waitForPackageJob", gallery)
+        self.assertIn("/api/jobs/${activeJobId}/cancel", gallery)
 
 
 if __name__ == "__main__":

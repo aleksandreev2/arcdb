@@ -35,9 +35,26 @@ structure/CRC/size validation and copies non-text entries in 1 MiB chunks.
 The measured p50 Python peak decreased by approximately 93%. The local p50 runtime
 increased by approximately 16% because the new path deliberately performs full
 archive validation/CRC reads in addition to packaging. This is an accepted safety
-trade-off: request memory is bounded by entry/chunk limits instead of archive size.
-Moving this remaining CPU/I/O work out of Flask requests is Phase 6.
+trade-off: memory is bounded by entry/chunk limits instead of archive size. Phase 6
+now executes this measured implementation in the separate packager process; the
+numbers remain a function-level baseline, not an end-to-end queue latency benchmark.
 
 The benchmark creates only temporary data and emits path-free JSON. Payload size and
 repetition count are configurable; use the same command and inputs for later
 comparisons.
+
+## Async queue admission — 2026-08-22
+
+Command:
+
+```text
+python scripts/benchmark_job_queue.py --repetitions 200
+```
+
+On the same Windows/Python/CPU environment, one WAL enqueue plus an owner status read
+measured p50 7.912 ms, p95 22.664 ms and p99 23.550 ms. The previous 16 MiB bounded
+package function baseline above measured p50 538.299 ms and ran inside finalize.
+These are different scopes, so the comparison proves request-path separation rather
+than end-to-end speedup: the HTTP path now persists control-plane work and returns,
+while EPUB CPU/I/O continues asynchronously in the worker. Production queue wait,
+Block Volume latency and total completion time remain unmeasured.

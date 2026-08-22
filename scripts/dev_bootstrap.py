@@ -361,16 +361,38 @@ def run_server(py: Path, child_env: dict[str, str], entrypoint: Path) -> int:
     print("[ArchiveDB] Press Ctrl+C to stop.\n")
 
     proc = subprocess.Popen([str(py), str(entrypoint)], cwd=ROOT, env=child_env)
+    packager = None
+    if child_env.get("ARCHIVEDB_START_PACKAGER", "1") == "1":
+        packager = subprocess.Popen(
+            [str(py), str(ROOT / "scripts" / "run_packager.py")],
+            cwd=ROOT,
+            env=child_env,
+        )
+        print(f"[ArchiveDB] Packager worker PID: {packager.pid}")
+
+    def stop_process(process: subprocess.Popen | None) -> None:
+        if process is None or process.poll() is not None:
+            return
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+
     try:
         wait_for_server_and_open(url, proc, child_env)
-        return proc.wait()
+        while proc.poll() is None:
+            if packager is not None and packager.poll() is not None:
+                stop_process(proc)
+                raise RuntimeError("The local EPUB packager worker stopped unexpectedly.")
+            time.sleep(0.25)
+        return int(proc.returncode or 0)
     except KeyboardInterrupt:
-        proc.terminate()
-        try:
-            return proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            return proc.wait()
+        stop_process(proc)
+        return int(proc.returncode or 0)
+    finally:
+        stop_process(packager)
 
 
 def main() -> int:

@@ -413,12 +413,38 @@ Decision:
 - restrict package images by signature and configurable per-file/session limits;
 - bind package sessions to their authenticated creator and expire them after a
   bounded lifetime;
-- keep package endpoints synchronous until the separate persistent-jobs phase.
+- keep the bounded implementation reusable by the separate persistent-jobs phase.
 
 Reasoning:
 
 Filename extensions and ZIP central-directory metadata alone do not protect against
 traversal, link abuse, duplicate cross-platform paths, decompression bombs, damaged
 content or unbounded memory. Atomic temporary publication keeps partial uploads,
-extractions and final EPUBs out of live paths. The synchronous API remains compatible
-while the reusable bounded implementation becomes safe to move into a worker.
+extractions and final EPUBs out of live paths. The reusable bounded implementation
+is safe to call from a worker.
+
+## ADR-025 — Use a separate SQLite WAL queue for persistent EPUB jobs
+
+Status: accepted and implemented for repository/local/CI runtime.
+
+Decision:
+
+- keep package jobs in `package_jobs.sqlite3`, separate from candidate state schema
+  v3, so the operational queue does not force an in-place state migration;
+- make Flask enqueue only and return HTTP 202; execute packaging in a dedicated
+  process that never imports the Flask runtime;
+- atomically claim queued rows and persist attempts, heartbeat, progress, timeout,
+  cancellation, sanitized errors and bounded retention;
+- recover stale processing rows after restart while attempts remain;
+- use the existing bounded/atomic EPUB implementation for result publication;
+- keep queue/session paths on shared local Block Volume storage, not R2 or
+  process-private temp storage;
+- provide a systemd template but do not claim production enablement before inventory
+  confirms paths, user ownership and units.
+
+Reasoning:
+
+EPUB finalization can outlive an HTTP request and must survive web/worker restart.
+SQLite provides sufficient single-VM claim and recovery semantics without adding
+Redis/Celery. Separating operational jobs from user-state schema v3 avoids weakening
+the candidate-first migration invariant or requiring a risky in-place schema bump.

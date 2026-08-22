@@ -82,15 +82,17 @@ Mutable state such as reading progress can require reading, mutating and rewriti
 
 ### Heavy request work
 
-EPUB/ZIP/image processing can occur synchronously inside HTTP requests. Large operations therefore risk origin/edge timeouts and tie up web capacity.
+Historical production source may still perform EPUB/ZIP/image processing inside HTTP
+requests until the new worker revision is reconciled and deployed. The tracked
+repository runtime no longer does final EPUB construction in Flask.
 
 ### Bounded EPUB handling
 
 Repository/local/CI upload, extraction, reader asset recovery and package-finalization
 paths now enforce archive entry/count/expanded-size/compression/path/link/duplicate
 limits. Non-text entries are copied in bounded chunks and package publication is
-atomic. Packaging is still synchronous and must move to the persistent worker in the
-next phase.
+atomic. Final packaging now runs through the persistent worker; init and bounded
+client image upload remain HTTP operations.
 
 ## 6. Near-term target architecture
 
@@ -144,7 +146,9 @@ For hot mutable application state:
 - uploads metadata;
 - custom metadata;
 - allowlist;
-- later: jobs/events where appropriate.
+- package jobs in a dedicated operational SQLite WAL database (implemented; not
+  part of state schema v3 or evidence of production enablement);
+- later: other jobs/events where appropriate.
 
 SQLite is appropriate while ArchiveDB is a single-primary-VM application. It can later be replaced by PostgreSQL if actual multi-node/high-concurrency write requirements appear.
 
@@ -182,7 +186,8 @@ arcdb-telegram.service
 cloudflared.service
 ```
 
-The names are proposed, not yet live-production facts.
+The names are proposed, not yet live-production facts. The repository includes an
+`arcdb-packager` systemd template, but actual paths/user/unit enablement are unknown.
 
 ### Web service
 
@@ -193,7 +198,8 @@ Responsibilities:
 - reader responses;
 - enqueue long-running jobs.
 
-Must not synchronously perform heavyweight packaging once the worker exists.
+The tracked runtime now enqueues packaging and returns HTTP 202; it does not import
+or invoke the package builder in the finalize request.
 
 ### Packager worker
 
@@ -210,6 +216,10 @@ API pattern:
 POST /api/package -> 202 + job_id
 GET /api/jobs/<id> -> queued/processing/done/failed + progress
 ```
+
+Implemented queue states also include `cancelled`. The worker persists attempts,
+heartbeat, timeout, cancellation and stale recovery in `package_jobs.sqlite3`; final
+EPUB publication remains bounded and atomic. See `docs/ASYNC_PACKAGER.md`.
 
 ### Telegram worker
 
