@@ -103,11 +103,22 @@ def main() -> int:
         ("/api/trending", {}),
         ("/api/community/overview", {}),
         ("/read/422601", {}),
+        ("/api/read/422601/chapter/OEBPS/chapter1.xhtml", {}),
         ("/admin/access", {}),
         ("/api/admin/state-read-probe", {}),
     )
     for path, kwargs in cases:
         assert_same(control, candidate, path, **kwargs)
+
+    for client in (control, candidate):
+        status, content_type, body, _ = client.request(
+            "/api/read/422601/chapter/OEBPS/chapter1.xhtml"
+        )
+        assert status == 200 and content_type == "text/html", (status, content_type)
+        chapter = body.decode("utf-8")
+        assert "Chapter 1" in chapter and "safe after void element" in chapter, chapter
+        for unsafe in ("<script", "onclick", "javascript:", "<svg", "<embed"):
+            assert unsafe not in chapter.casefold(), (unsafe, chapter)
     print(f"Read-backend API parity passed for {len(cases)} runtime endpoints.")
     return 0
 

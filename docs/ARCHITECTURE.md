@@ -150,6 +150,12 @@ State-changing web methods pass through one Origin/Referer gate before route
 dispatch. Production uses an explicit public-origin allowlist; the repository does
 not guess the live tunnel hostname. Logout is POST-only. See `docs/SECURITY.md`.
 
+Reader chapter HTML crosses a parser-based allowlist boundary after local asset
+references are rewritten. The runtime reconstructs only approved semantic HTML,
+attributes and URL schemes and drops executable/embedded/foreign subtrees; it does
+not use regex replacement as the sanitization boundary. Malformed active markup
+fails closed. See `docs/SECURITY.md`.
+
 ### SQLite WAL
 
 For hot mutable application state:
@@ -293,7 +299,8 @@ Preserve/strengthen:
 Review/add:
 
 - CSRF/same-origin controls for state-changing endpoints;
-- robust allowlist HTML sanitization for user EPUB content;
+- parser-based allowlist HTML sanitization for user EPUB content (implemented in
+  repository/local/CI; production enablement pending reconciliation);
 - upload type/size/session ownership limits;
 - separation of secrets from repository;
 - Cloudflare/origin network restrictions.

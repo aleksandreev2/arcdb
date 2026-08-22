@@ -152,6 +152,23 @@ class TrackedRuntimeSourceTests(unittest.TestCase):
         self.assertIn("waitForPackageJob", gallery)
         self.assertIn("/api/jobs/${activeJobId}/cancel", gallery)
 
+    def test_reader_uses_parser_allowlist_sanitizer(self) -> None:
+        text = TRACKED_APP.read_text(encoding="utf-8")
+        sanitizer_path = ROOT / "arcdb" / "html_sanitizer.py"
+        sanitizer = sanitizer_path.read_text(encoding="utf-8")
+        self.assertIn("from html.parser import HTMLParser", sanitizer)
+        self.assertIn("ALLOWED_TAGS = frozenset", sanitizer)
+        self.assertIn("ALLOWED_URL_SCHEMES = frozenset", sanitizer)
+        self.assertIn("from arcdb.html_sanitizer import sanitize_epub_html", text)
+        self.assertIn("return sanitize_epub_html(content)", text)
+        for obsolete in (
+            "_SCRIPT_BLOCK_RE",
+            "_EVENT_ATTR_RE",
+            "_JS_URL_RE",
+            "def sanitize_chapter_html",
+        ):
+            self.assertNotIn(obsolete, text)
+
     def test_web_health_readiness_and_request_timing_are_sanitized(self) -> None:
         text = TRACKED_APP.read_text(encoding="utf-8")
         for marker in (

@@ -39,10 +39,35 @@ lookalike domains, referer fallback and local hostname mode. Real legacy/SQLite
 runtime parity rejects both missing and attacker origins and exercises every normal
 workflow with an explicit allowed origin.
 
+## EPUB chapter HTML
+
+Status: implemented in repository/local/CI runtime. This changes the tracked reader
+path; production enablement still follows the inventory/reconciliation rollout and
+is not claimed here.
+
+Untrusted chapter markup is parsed with Python's `HTMLParser` and reconstructed from
+explicit tag, attribute and URL-scheme allowlists. The reader never returns the
+original markup directly. Script/style/form/embedded content, SVG and MathML
+subtrees, comments, processing instructions, event handlers, inline style and
+unknown attributes are removed. `href`, `src` and `cite` allow relative references,
+fragments and only `http`, `https` or `mailto` schemes; control-character,
+whitespace and character-reference scheme obfuscation is rejected. Existing reader
+asset URLs remain relative and allowed.
+
+Malformed active subtrees fail closed: content after an unclosed active tag is not
+reintroduced. Forbidden HTML void elements are discarded without swallowing safe
+following content. Output is balanced and attribute values/text are escaped. This
+is intentionally a content-security boundary, so EPUB inline styles and foreign
+namespaces are not preserved.
+
+Unit tests cover normal semantic EPUB markup, reader asset URLs, malformed markup,
+dangerous/obfuscated schemes, duplicate attributes, active foreign namespaces and
+forbidden void elements. The real legacy/SQLite reader parity workflow also serves
+a malicious seeded chapter and asserts the response contains safe content but none
+of the executable constructs.
+
 ## Remaining Phase 11 work
 
-- replace regex chapter HTML cleaning with a parser and explicit tag/attribute/URL
-  allowlist;
 - complete the ownership review for non-package upload/session surfaces;
 - tighten CSP after inline CSS/JS is split;
 - inventory-gate origin-network restrictions, secret ownership/rotation and admin

@@ -72,6 +72,7 @@ from arcdb.epub_io import (
     iter_epub_text_entries,
     validate_epub_archive,
 )
+from arcdb.html_sanitizer import sanitize_epub_html
 from arcdb.jobs import JobStore
 from arcdb.library_index import LibraryIndex, LibraryIndexUnavailable
 from arcdb.security import (
@@ -3058,25 +3059,6 @@ def get_novel_images(novel):
 
 _MEDIA_REF_PATTERN = re.compile(r"(src=|href=|url\()(['\"]?)([^'\" \)>]+)\2([\s)>]|$)", re.IGNORECASE)
 
-_SCRIPT_BLOCK_RE = re.compile(r"<script\b[^>]*>[\s\S]*?</script\s*>", re.IGNORECASE)
-_ORPHAN_SCRIPT_RE = re.compile(r"</?script\b[^>]*>", re.IGNORECASE)
-_FORBIDDEN_TAG_RE = re.compile(
-    r"</?(?:iframe|frame|frameset|object|embed|form|meta|base|applet)\b[^>]*>",
-    re.IGNORECASE,
-)
-_EVENT_ATTR_RE = re.compile(r"\s+on[a-z]+\s*=\s*(?:\"[^\"]*\"|'[^']*'|[^\s>]+)", re.IGNORECASE)
-_JS_URL_RE = re.compile(r"(\b(?:href|src|xlink:href)\s*=\s*[\"']?)\s*javascript:[^\"'\s>]*", re.IGNORECASE)
-
-def sanitize_chapter_html(content):
-    content = _SCRIPT_BLOCK_RE.sub("", content)
-    content = _ORPHAN_SCRIPT_RE.sub("", content)
-    content = _FORBIDDEN_TAG_RE.sub("", content)
-    content = _EVENT_ATTR_RE.sub("", content)
-    content = _JS_URL_RE.sub(r"\1#", content)
-    content = re.sub(r'white-space\s*:\s*nowrap;?', '', content, flags=re.IGNORECASE)
-    content = re.sub(r'width\s*:\s*\d{3,}px;?', 'max-width:100%;', content, flags=re.IGNORECASE)
-    return content
-
 def rewrite_chapter_assets(content, novel_id, chap_rel_path):
     chap_dir = os.path.dirname(chap_rel_path)
     def replace_media(match):
@@ -4745,7 +4727,7 @@ def api_read_chapter(novel_id, chap_path):
     body_match = re.search(r"<body[^>]*>([\s\S]*?)</body>", content, re.IGNORECASE)
     if body_match:
         content = body_match.group(1)
-    return sanitize_chapter_html(content)
+    return sanitize_epub_html(content)
 
 @app.route("/api/read/<novel_id>/asset/<path:asset_path>")
 @login_required
