@@ -19,6 +19,7 @@ from arcdb.epub_io import EpubLimits, validate_epub_archive
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE_URL = os.environ.get("ARCHIVEDB_TEST_BASE_URL", "http://127.0.0.1:5004")
+ORIGIN = os.environ.get("ARCHIVEDB_TEST_ORIGIN", "http://127.0.0.1:5004")
 
 
 def fixture_secret() -> str:
@@ -58,7 +59,7 @@ class Client:
     ) -> tuple[bytes, str]:
         headers = {"Content-Type": content_type} if content_type else {}
         if data is not None:
-            headers["Origin"] = BASE_URL
+            headers["Origin"] = ORIGIN
         request = urllib.request.Request(
             BASE_URL + path,
             data=data,

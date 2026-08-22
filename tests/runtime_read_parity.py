@@ -15,6 +15,7 @@ CANDIDATE_URL = os.environ.get(
     "ARCHIVEDB_CANDIDATE_URL",
     os.environ.get("ARCHIVEDB_SQLITE_URL", "http://127.0.0.1:5005"),
 ).rstrip("/")
+TEST_ORIGIN = os.environ.get("ARCHIVEDB_TEST_ORIGIN", CONTROL_URL).rstrip("/")
 
 
 class Client:
@@ -29,11 +30,11 @@ class Client:
         data = None
         if form is not None:
             data = urllib.parse.urlencode(form).encode("utf-8")
-            headers["Origin"] = self.base_url
+            headers["Origin"] = TEST_ORIGIN
         elif payload is not None:
             data = json.dumps(payload).encode("utf-8")
             headers["Content-Type"] = "application/json"
-            headers["Origin"] = self.base_url
+            headers["Origin"] = TEST_ORIGIN
         request = urllib.request.Request(
             self.base_url + path, data=data, headers=headers
         )

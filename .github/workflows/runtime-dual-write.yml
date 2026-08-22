@@ -64,29 +64,34 @@ jobs:
 
           curl --fail --silent --show-error \
             -c cookies.txt \
+            -H 'Origin: http://127.0.0.1:5004' \
             -d 'email=dev@arcdb.local&password=arcdb-dev-123' \
             -X POST http://127.0.0.1:5004/login >/dev/null
 
           curl --fail --silent --show-error \
             -b cookies.txt \
+            -H 'Origin: http://127.0.0.1:5004' \
             -H 'Content-Type: application/json' \
             -d '{"id":"422601","progress":79}' \
             -X POST http://127.0.0.1:5004/api/user_progress >/dev/null
 
           curl --fail --silent --show-error \
             -b cookies.txt \
+            -H 'Origin: http://127.0.0.1:5004' \
             -H 'Content-Type: application/json' \
             -d '{"id":"422601","status":"finished"}' \
             -X POST http://127.0.0.1:5004/api/user_status >/dev/null
 
           curl --fail --silent --show-error \
             -b cookies.txt \
+            -H 'Origin: http://127.0.0.1:5004' \
             -H 'Content-Type: application/json' \
             -d '{"id":"422601","hide":true}' \
             -X POST http://127.0.0.1:5004/api/user_hide >/dev/null
 
           curl --fail --silent --show-error \
             -b cookies.txt \
+            -H 'Origin: http://127.0.0.1:5004' \
             -H 'Content-Type: application/json' \
             -d '{"id":"422601","hide":false}' \
             -X POST http://127.0.0.1:5004/api/user_hide >/dev/null

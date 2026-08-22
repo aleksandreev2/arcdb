@@ -18,6 +18,7 @@ from arcdb.storage.state_parity import (
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE_URL = os.environ.get("ARCHIVEDB_TEST_BASE_URL", "http://127.0.0.1:5004")
+ORIGIN = os.environ.get("ARCHIVEDB_TEST_ORIGIN", "http://127.0.0.1:5004")
 META_DIR = ROOT / "data" / "metadata"
 DB_PATH = ROOT / "data" / "arcdb.sqlite3"
 
@@ -32,7 +33,7 @@ class ApiClient:
     def login(self, email: str, password: str) -> None:
         body = urllib.parse.urlencode({"email": email, "password": password}).encode()
         request = urllib.request.Request(
-            f"{BASE_URL}/login", data=body, headers={"Origin": BASE_URL}
+            f"{BASE_URL}/login", data=body, headers={"Origin": ORIGIN}
         )
         response = self.opener.open(request, timeout=20)
         if response.status != 200:
@@ -49,7 +50,7 @@ class ApiClient:
         request = urllib.request.Request(
             f"{BASE_URL}{path}",
             data=data,
-            headers={"Content-Type": "application/json", "Origin": BASE_URL}
+            headers={"Content-Type": "application/json", "Origin": ORIGIN}
             if data is not None else {},
             method="POST" if data is not None else "GET",
         )

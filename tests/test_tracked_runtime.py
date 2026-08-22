@@ -184,6 +184,21 @@ class TrackedRuntimeSourceTests(unittest.TestCase):
         )
         self.assertIn('<form action="/logout" method="post"', gallery)
         self.assertNotIn('href="/logout"', gallery)
+        dual_write = (ROOT / ".github" / "workflows" / "runtime-dual-write.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertGreaterEqual(
+            dual_write.count("Origin: http://127.0.0.1:5004"), 5
+        )
+        for workflow in (
+            "runtime_auth_workflow.py",
+            "runtime_collection_workflow.py",
+            "runtime_epub_workflow.py",
+            "runtime_metadata_workflow.py",
+            "runtime_read_parity.py",
+        ):
+            runtime = (ROOT / "tests" / workflow).read_text(encoding="utf-8")
+            self.assertIn("ARCHIVEDB_TEST_ORIGIN", runtime)
 
     def test_library_and_reader_runtime_paths_use_persistent_index(self) -> None:
         text = TRACKED_APP.read_text(encoding="utf-8")
