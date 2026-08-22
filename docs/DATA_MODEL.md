@@ -192,6 +192,7 @@ Typical ignored tree:
 data/
 ├── arcdb.sqlite3
 ├── migration-backups/
+├── sqlite-backups/
 ├── shadow-sidecar-backups/
 ├── metadata/
 │   ├── users.json
@@ -280,7 +281,16 @@ Must have application-level backup + checksum manifest before production migrati
 
 ### SQLite
 
-Use candidate-first promotion and preserve previous SQLite copy. Before replacing a runtime-used DB, stop/quiesce users and checkpoint it; active WAL/SHM sidecars are a fail-closed condition in production migration tooling.
+Use candidate-first migration promotion and preserve the previous SQLite copy. For
+recurring operational backups, use `scripts/create_sqlite_backup.py`: the SQLite
+online backup API captures a consistent committed snapshot including WAL content,
+then produces a portable single-file artifact with SHA-256, integrity/FK checks and
+a temporary runtime restore test. `scripts/restore_sqlite_backup.py` restores only to
+a new path and never overwrites an active database. See `docs/BACKUP_RESTORE.md`.
+
+Before a migration promotion or an application cutover to a restored path,
+stop/quiesce users and preserve the current database plus its sidecars. Active
+WAL/SHM sidecars remain a fail-closed condition for replacing a migration target.
 
 ### EPUB/chapter data
 

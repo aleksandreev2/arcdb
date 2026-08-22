@@ -76,6 +76,7 @@ Completed:
 - read-only cutover readiness preflight with full parity, SQLite health checks, recursive source-hash stability and a payload-free report that cannot authorize cutover by itself;
 - Phase 3C shadow-observation evidence validation plus a real Flask SQLite-canary -> legacy rollback rehearsal in CI.
 - read-only production discovery, structured private inventory, path-free reporting and deterministic source reconciliation tooling; live execution is still pending.
+- WAL-aware SQLite online backup, sanitized checksum manifest, independent runtime restore verification and new-target-only restore tooling.
 
 Still pending:
 
@@ -215,6 +216,7 @@ At minimum:
 - keep Runtime Dual Write CI green while Phase 2 is active;
 - for storage changes, add parity/round-trip/integrity tests;
 - for any migration, prove source files were not modified;
+- for SQLite backup changes, prove WAL content is captured, corruption is rejected and an independent runtime restore succeeds;
 - keep the explicit read-cutover preflight green and its report free of paths, identities and payloads;
 - keep the bounded shadow-observation audit and SQLite-canary -> legacy rollback rehearsal green;
 - update docs when architecture, storage ownership or rollout state changes.
@@ -239,6 +241,7 @@ Start here, then read:
 - `docs/DATA_MODEL.md` — state/files and intended ownership.
 - `docs/STORAGE_MIGRATION.md` — SQLite migration phases.
 - `docs/PRODUCTION_SAFETY.md` — deployment/migration invariants and rollback.
+- `docs/BACKUP_RESTORE.md` — exact migration, operational backup, restore and retention procedure.
 - `docs/PRODUCTION_INVENTORY.md` — exact read-only live discovery/inventory/reconciliation procedure.
 - `docs/ROADMAP.md` — ordered implementation plan.
 - `docs/DECISIONS.md` — architectural decisions and rationale.

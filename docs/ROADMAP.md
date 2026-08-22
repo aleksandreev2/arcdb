@@ -27,9 +27,12 @@ Implemented:
 - integrity/foreign-key checks;
 - previous-SQLite preservation and rollback;
 - SQLite -> legacy reverse export;
+- WAL-aware online SQLite backup, independent verification and new-target-only restore;
 - project documentation/handoff rules.
 
-Production execution is still pending because real OCI paths/live source must be reconciled first.
+The repository-side migration and backup/restore toolchain is complete for the current
+state scope. Actual production execution remains separate and requires explicit real
+paths and operator-controlled timing.
 
 ## Phase 2 — runtime state dual-write
 

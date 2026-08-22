@@ -105,10 +105,11 @@ Implemented in repository:
 - explicit-path, read-only production readiness preflight with recursive source-hash stability, full parity and a sanitized non-authorizing report;
 - bounded-process shadow-event auditing and a real Flask SQLite-canary -> legacy rollback rehearsal in CI.
 - read-only host discovery plus explicit-path structured production inventory and materialized-baseline reconciliation, with separate private and path-free reports.
+- WAL-aware SQLite online backup with SHA-256 manifest, database integrity checks, temporary runtime restore verification and safe new-target-only restore tooling.
 
 SQLite is **not** the default or production read source. Phase 3 now exposes `STATE_READ_BACKEND=legacy|sqlite`; local/CI can run the same authenticated API flows against both backends, while `legacy` remains default. Phase 3B adds `STATE_READ_SHADOW_COMPARE=1` for legacy-served requests: SQLite is read only for equality checking and payload-free match/mismatch/error events, so non-strict observation cannot replace or damage the authoritative response.
 
-Phase 3C adds a fail-closed audit for one bounded process log and tests the immediate configuration rollback by replacing the SQLite-read canary process with a legacy-only process on the same port. Its sanitized report never includes the log path, identities or payloads and does not authorize primary reads. With no SSH/live snapshot, this remains repository readiness evidence only; production reconciliation and observation are still pending.
+Phase 3C adds a fail-closed audit for one bounded process log and tests the immediate configuration rollback by replacing the SQLite-read canary process with a legacy-only process on the same port. Its sanitized report never includes the log path, identities or payloads and does not authorize primary reads. Repository-side migration, backup and restore preparation is implemented and tested; production reconciliation and observation remain separate operator work when real inputs are available.
 
 Current write flow for covered mutations:
 
@@ -250,6 +251,7 @@ Avoid a full rewrite. Keep Flask and preserve API/UI behavior while extracting r
 - `docs/ARCHITECTURE.md` — component-level architecture.
 - `docs/STORAGE_MIGRATION.md` — migration phases and runtime flags.
 - `docs/PRODUCTION_SAFETY.md` — backup/cutover/rollback rules.
+- `docs/BACKUP_RESTORE.md` — executable migration, backup, restore and retention runbook.
 - `docs/DATA_MODEL.md` — files and SQLite ownership.
 - `docs/ROADMAP.md` — implementation sequence.
 - `docs/DECISIONS.md` — why these choices were made.

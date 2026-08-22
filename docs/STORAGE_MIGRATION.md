@@ -140,6 +140,20 @@ data/
 
 The manifest records source paths, backup paths, file sizes, SHA-256 values, candidate/target information, row counts and SQLite verification results.
 
+## Operational backup after migration
+
+The migration snapshot and the recurring SQLite backup solve different problems.
+Keep both. After a SQLite database exists, use `scripts/create_sqlite_backup.py` to
+capture a consistent committed snapshot with SQLite's online backup API, including
+committed WAL pages. The published backup is a portable single database plus a
+sanitized SHA-256 manifest and has already passed integrity/FK/application checks and
+a temporary runtime restore.
+
+Use `scripts/verify_sqlite_backup.py` for an independent restore verification and
+`scripts/restore_sqlite_backup.py` to publish a verified copy at a new path. Neither
+command modifies legacy files or overwrites an active SQLite path. The complete
+operator sequence is documented in `docs/BACKUP_RESTORE.md`.
+
 ## Existing SQLite target behavior
 
 A previous SQLite database is never silently discarded.

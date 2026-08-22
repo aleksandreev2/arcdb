@@ -12,9 +12,10 @@ Read these before architecture/storage changes:
 4. `docs/DATA_MODEL.md` — current and target data ownership.
 5. `docs/STORAGE_MIGRATION.md` — staged JSON -> SQLite plan.
 6. `docs/PRODUCTION_SAFETY.md` — backup/cutover/rollback invariants.
-7. `docs/PRODUCTION_INVENTORY.md` — live discovery/inventory/reconciliation procedure.
-8. `docs/ROADMAP.md` — ordered implementation plan.
-9. `docs/DECISIONS.md` — architectural decisions and rationale.
+7. `docs/BACKUP_RESTORE.md` — migration, WAL-aware backup and verified restore runbook.
+8. `docs/PRODUCTION_INVENTORY.md` — live discovery/inventory/reconciliation procedure.
+9. `docs/ROADMAP.md` — ordered implementation plan.
+10. `docs/DECISIONS.md` — architectural decisions and rationale.
 
 Material architectural changes should update the relevant docs in the same PR.
 
@@ -161,9 +162,33 @@ legacy metadata/CSV state
 
 Legacy files are not modified/deleted by the migration. If an SQLite target already exists it is preserved before candidate promotion. See `docs/PRODUCTION_SAFETY.md` before any production use.
 
+## Verified SQLite backup and restore
+
+After SQLite exists, create a consistent operational backup with the SQLite online
+backup API. This includes committed WAL pages without copying a live database and its
+sidecars by hand:
+
+```bash
+PYTHONPATH=. python scripts/create_sqlite_backup.py \
+  --db /explicit/data/arcdb.sqlite3 \
+  --backup-dir /new/backup/directory
+
+PYTHONPATH=. python scripts/verify_sqlite_backup.py /new/backup/directory
+
+PYTHONPATH=. python scripts/restore_sqlite_backup.py \
+  --backup-dir /new/backup/directory \
+  --target-db /new/restore/arcdb.sqlite3
+```
+
+Creation and independent verification both perform integrity, foreign-key,
+application-query and temporary runtime restore checks. Restore refuses to overwrite
+an existing database or sidecar and publishes only a new verified target. Legacy
+files remain preserved. See `docs/BACKUP_RESTORE.md` for the complete migration,
+backup, retention and rollback sequence.
+
 ## Production inventory and source reconciliation
 
-No live SSH session or sanitized production snapshot is included in this repository, so current production paths/configuration are still unknown. Repository-side tooling now provides the complete read-only procedure without inventing those facts:
+No live production inventory or sanitized snapshot is included in this repository, so current production paths/configuration are still unknown. Repository-side tooling now provides the complete read-only procedure without inventing those facts:
 
 ```bash
 bash scripts/oracle_inventory.sh > /new/private/path/oracle-inventory.txt
@@ -194,6 +219,7 @@ Development data stays outside Git:
 data/
 ├── arcdb.sqlite3
 ├── migration-backups/
+├── sqlite-backups/
 ├── metadata/
 ├── output/
 ├── structured_output/
@@ -237,6 +263,9 @@ scripts/dev_bootstrap.py        local environment/dependency/bootstrap launcher
 scripts/dev_seed.py             local-only login seed
 scripts/dev_seed_library.py     EPUB scanner + local library/state seeder
 scripts/migrate_state_to_sqlite.py safe legacy-state -> SQLite migration
+scripts/create_sqlite_backup.py WAL-aware verified operational backup
+scripts/verify_sqlite_backup.py independent backup + restore verification
+scripts/restore_sqlite_backup.py verified restore to a new target only
 scripts/oracle_inventory.sh     read-only production inventory helper
 scripts/collect_production_inventory.py structured private/path-free inventory reports
 scripts/reconcile_production_inventory.py live source vs materialized baseline diff
