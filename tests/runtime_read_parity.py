@@ -3,6 +3,7 @@ from __future__ import annotations
 import http.cookiejar
 import json
 import os
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -28,9 +29,11 @@ class Client:
         data = None
         if form is not None:
             data = urllib.parse.urlencode(form).encode("utf-8")
+            headers["Origin"] = self.base_url
         elif payload is not None:
             data = json.dumps(payload).encode("utf-8")
             headers["Content-Type"] = "application/json"
+            headers["Origin"] = self.base_url
         request = urllib.request.Request(
             self.base_url + path, data=data, headers=headers
         )
@@ -44,6 +47,28 @@ class Client:
             if content_type == "application/json":
                 body = json.loads(body.decode("utf-8"))
             return response.status, content_type, body, urllib.parse.urlparse(response.geturl()).path
+
+    def assert_origin_rejected(self, origin=None) -> None:
+        headers = {"Content-Type": "application/json"}
+        if origin is not None:
+            headers["Origin"] = origin
+        request = urllib.request.Request(
+            self.base_url + "/api/library",
+            data=b"{}",
+            headers=headers,
+            method="POST",
+        )
+        try:
+            self.opener.open(request, timeout=30)
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 403, exc.code
+            body = json.loads(exc.read().decode("utf-8"))
+            assert body == {
+                "status": "error",
+                "error": "Cross-origin request rejected.",
+            }, body
+            return
+        raise AssertionError("unsafe request without an allowed origin was accepted")
 
 
 def assert_same(
@@ -65,6 +90,9 @@ def main() -> int:
     candidate = Client(CANDIDATE_URL)
 
     assert_same(control, candidate, "/login", form={"email": email, "password": password})
+    for client in (control, candidate):
+        client.assert_origin_rejected()
+        client.assert_origin_rejected("https://attacker.invalid")
     cases = (
         ("/healthz", {}),
         ("/readyz", {}),

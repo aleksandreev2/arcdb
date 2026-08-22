@@ -37,6 +37,8 @@ class ApiClient:
         expected_status: int = 200,
     ) -> bytes:
         headers = {"Content-Type": content_type} if content_type else {}
+        if data is not None:
+            headers["Origin"] = BASE_URL
         request = urllib.request.Request(
             f"{BASE_URL}{path}",
             data=data,

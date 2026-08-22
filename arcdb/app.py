@@ -74,6 +74,11 @@ from arcdb.epub_io import (
 )
 from arcdb.jobs import JobStore
 from arcdb.library_index import LibraryIndex, LibraryIndexUnavailable
+from arcdb.security import (
+    OriginConfigurationError,
+    parse_allowed_origins,
+    request_source_allowed,
+)
 from arcdb.storage.runtime_reads import StateReadError, check_state_read_backend_ready
 from arcdb.telegram_gateway import TelegramGateway, TelegramGatewayError
 
@@ -265,6 +270,10 @@ if not ADMIN_EMAILS:
 DMCA_EMAIL = _env_str("DMCA_EMAIL")
 DAILY_DOWNLOAD_LIMIT = _env_int("DAILY_DOWNLOAD_LIMIT", 20)
 SESSION_LIFETIME_DAYS = _env_int("SESSION_LIFETIME_DAYS", 30)
+try:
+    ALLOWED_ORIGINS = parse_allowed_origins(_env_str("ARCHIVEDB_ALLOWED_ORIGINS", ""))
+except OriginConfigurationError as exc:
+    raise RuntimeError("ARCHIVEDB_ALLOWED_ORIGINS is invalid") from exc
 
 CODE_TTL_SECONDS = _env_int("CODE_TTL_SECONDS", 600)
 MAX_CODE_ATTEMPTS = _env_int("MAX_CODE_ATTEMPTS", 5)
@@ -361,6 +370,21 @@ for _message in _STARTUP_WARNINGS:
 def begin_request_observation():
     g.request_id = uuid.uuid4().hex
     g.request_started_at = time.perf_counter()
+
+@app.before_request
+def enforce_state_change_origin():
+    if request.method not in {"POST", "PUT", "PATCH", "DELETE"}:
+        return None
+    if request_source_allowed(
+        origin=request.headers.get("Origin"),
+        referer=request.headers.get("Referer"),
+        host=request.host,
+        allowed_origins=ALLOWED_ORIGINS,
+    ):
+        return None
+    if request.path.startswith("/api/"):
+        return jsonify({"status": "error", "error": "Cross-origin request rejected."}), 403
+    return Response("Cross-origin request rejected.", status=403, mimetype="text/plain")
 
 def get_client_ip():
     """Extract real client IP considering Cloudflare Tunnel proxies."""
@@ -3292,7 +3316,7 @@ def login():
     session["user_email"] = email
     return redirect(url_for("index"))
 
-@app.route("/logout")
+@app.route("/logout", methods=["POST"])
 def logout():
     session.pop("user_email", None)
     return redirect(url_for("login"))
@@ -4622,7 +4646,7 @@ def admin_access():
     <div class="top-links">
       <a href="/">Back to gallery</a>
       <a href="/admin/downloads">Download report</a>
-      <a href="/logout">Logout</a>
+      <form action="/logout" method="post" style="display:inline"><button type="submit">Logout</button></form>
     </div>
 
     {message_html}

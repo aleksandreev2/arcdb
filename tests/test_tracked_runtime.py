@@ -173,6 +173,18 @@ class TrackedRuntimeSourceTests(unittest.TestCase):
         self.assertNotIn('session.get("user_email"', request_log)
         self.assertNotIn("get_client_ip()", request_log)
 
+    def test_state_changes_are_centrally_origin_protected(self) -> None:
+        text = TRACKED_APP.read_text(encoding="utf-8")
+        self.assertIn("def enforce_state_change_origin", text)
+        self.assertIn('request.method not in {"POST", "PUT", "PATCH", "DELETE"}', text)
+        self.assertIn("request_source_allowed(", text)
+        self.assertIn('@app.route("/logout", methods=["POST"])', text)
+        gallery = (ROOT / "arcdb" / "templates" / "gallery.html").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('<form action="/logout" method="post"', gallery)
+        self.assertNotIn('href="/logout"', gallery)
+
     def test_library_and_reader_runtime_paths_use_persistent_index(self) -> None:
         text = TRACKED_APP.read_text(encoding="utf-8")
 

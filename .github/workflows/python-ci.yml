@@ -27,6 +27,7 @@ jobs:
           arcdb/jobs.py
           arcdb/library_index.py
           arcdb/observability.py
+          arcdb/security.py
           arcdb/package_worker.py
           arcdb/telegram_gateway.py
           arcdb/telegram_service.py
@@ -77,6 +78,7 @@ jobs:
           tests/test_jobs.py
           tests/test_library_index.py
           tests/test_observability.py
+          tests/test_security.py
           tests/test_telegram_service.py
           tests/test_tracked_runtime.py
           tests/test_telegram_service.py
@@ -203,11 +205,13 @@ jobs:
 
           curl --fail --silent --show-error \
             -c cookies.txt \
+            -H 'Origin: http://127.0.0.1:5004' \
             -d 'email=dev@arcdb.local&password=arcdb-dev-123' \
             -X POST http://127.0.0.1:5004/login >/dev/null
 
           curl --fail --silent --show-error \
             -b cookies.txt \
+            -H 'Origin: http://127.0.0.1:5004' \
             -H 'Content-Type: application/json' \
             -d '{"page":1,"limit":50}' \
             http://127.0.0.1:5004/api/library > library.json
@@ -250,6 +254,7 @@ jobs:
           tests/test_runtime_metadata.py
           tests/test_library_index.py
           tests/test_observability.py
+          tests/test_security.py
           tests/test_tracked_runtime.py
           tests/test_dev_seed.py
       - name: Run read-only cutover readiness preflight

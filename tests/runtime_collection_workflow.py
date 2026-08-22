@@ -31,7 +31,10 @@ class ApiClient:
 
     def login(self, email: str, password: str) -> None:
         body = urllib.parse.urlencode({"email": email, "password": password}).encode()
-        response = self.opener.open(f"{BASE_URL}/login", data=body, timeout=20)
+        request = urllib.request.Request(
+            f"{BASE_URL}/login", data=body, headers={"Origin": BASE_URL}
+        )
+        response = self.opener.open(request, timeout=20)
         if response.status != 200:
             raise AssertionError(f"Login failed for {email}: HTTP {response.status}")
 
@@ -46,7 +49,8 @@ class ApiClient:
         request = urllib.request.Request(
             f"{BASE_URL}{path}",
             data=data,
-            headers={"Content-Type": "application/json"} if data is not None else {},
+            headers={"Content-Type": "application/json", "Origin": BASE_URL}
+            if data is not None else {},
             method="POST" if data is not None else "GET",
         )
         try:
