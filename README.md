@@ -336,6 +336,11 @@ tag/attribute/URL allowlist. Executable and embedded markup, event handlers, inl
 styles and dangerous URL schemes are removed; malformed active markup fails closed.
 See `docs/SECURITY.md` for the compatibility and verification contract.
 
+Executable browser code is protected by a per-response nonce: CSP no longer allows
+`unsafe-inline` scripts or the previous CDN fallback and blocks script attributes.
+The shared auth CSS is a local fingerprinted immutable asset; the later static split
+will remove the remaining inline-style exception without changing the design.
+
 ## Repository layout
 
 ```text

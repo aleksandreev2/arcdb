@@ -267,16 +267,18 @@ Do not move EPUB processing/Telegram/SQLite into Workers.
 ## Phase 11 — security hardening
 
 Status: systematic state-changing request origin protection, POST-only logout,
-parser-based EPUB HTML sanitization and upload/session ownership/path confinement
-are implemented in repository/local/CI. The remaining production/inventory-gated
-controls are pending.
+parser-based EPUB HTML sanitization, upload/session ownership/path confinement and
+nonce-based executable-script CSP are implemented in repository/local/CI. The
+remaining production/inventory-gated controls are pending.
 
 Some items can occur earlier when touching related code:
 
 - systematic CSRF/same-origin protection (implemented; exact production origin pending inventory);
 - parser + explicit tag/attribute/URL allowlist for EPUB content (implemented);
 - systematic ownership review for upload/session endpoints (implemented);
-- tighter CSP;
+- nonce-only executable-script CSP and blocked script attributes (implemented);
+- remove the remaining `style-src 'unsafe-inline'` during the behavior-preserving
+  large-template static CSS split (Phase 8/late frontend work);
 - origin network restrictions;
 - admin auditability;
 - secret rotation/documented secret ownership.

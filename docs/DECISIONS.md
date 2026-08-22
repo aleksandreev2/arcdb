@@ -562,3 +562,29 @@ as `structured_output_evil`. Metadata is mutable operational state and cannot be
 filesystem authorization boundary. A single realpath-aware confinement primitive
 keeps normal absolute/relative deployments compatible while making corrupted or
 hostile stored values fail closed. No state migration is needed.
+
+## ADR-030 — Use response nonces before the large static-template split
+
+Status: accepted and implemented for repository/local/CI runtime.
+
+Decision:
+
+- generate a fresh cryptographic nonce for every request and use it in the response
+  CSP plus every tracked executable inline block;
+- remove `unsafe-inline` and third-party CDN sources from `script-src` and set
+  `script-src-attr 'none'`;
+- replace the remaining HTML event-handler attributes with explicit listeners;
+- remove the unused JSZip load/CDN fallback rather than vendor an unused dependency;
+- extract the identical auth-page CSS to a content-versioned local asset and return
+  immutable caching only for versioned static requests;
+- retain `style-src 'unsafe-inline'` temporarily for large gallery/reader/community
+  templates and remove it in the later behavior-preserving static CSS phase.
+
+Reasoning:
+
+Moving 250+ KB of coupled template CSS/JS and eliminating all dynamic style
+attributes in one security patch would create unnecessary UI regression risk. A
+request nonce immediately closes arbitrary inline-script and handler execution while
+preserving behavior and Jinja-provided reader data. Externalizing the already
+identical auth CSS proves the fingerprint/cache contract. The remaining style-only
+exception does not authorize script execution and is documented rather than hidden.

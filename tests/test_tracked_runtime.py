@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
+import re
 import unittest
 from pathlib import Path
 
@@ -186,10 +188,45 @@ class TrackedRuntimeSourceTests(unittest.TestCase):
         ):
             self.assertIn(marker, text)
         log_start = text.index("def log_request")
-        log_end = text.index("_CSP =", log_start)
+        log_end = text.index("def _content_security_policy", log_start)
         request_log = text[log_start:log_end]
         self.assertNotIn('session.get("user_email"', request_log)
         self.assertNotIn("get_client_ip()", request_log)
+
+    def test_script_csp_uses_nonces_and_blocks_inline_attributes(self) -> None:
+        text = TRACKED_APP.read_text(encoding="utf-8")
+        self.assertIn("g.csp_nonce = secrets.token_urlsafe(24)", text)
+        self.assertIn("script-src 'self' 'nonce-", text)
+        self.assertIn("script-src-attr 'none'", text)
+        self.assertNotIn("https://cdnjs.cloudflare.com", text)
+
+        templates = {
+            path.name: path.read_text(encoding="utf-8")
+            for path in TRACKED_TEMPLATES.glob("*.html")
+        }
+        combined = "\n".join(templates.values())
+        script_tags = re.findall(r"<script\b[^>]*>", combined, re.IGNORECASE)
+        self.assertTrue(script_tags)
+        self.assertTrue(all('nonce="{{ g.csp_nonce }}"' in tag for tag in script_tags))
+        self.assertIsNone(re.search(r"\son[a-z]+\s*=", combined, re.IGNORECASE))
+        self.assertNotIn("JSZip", combined)
+        self.assertNotIn("cdnjs.cloudflare.com", combined)
+
+        parity = (ROOT / "tests" / "runtime_read_parity.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("<per-response-csp-nonce>", parity)
+        self.assertIn("normalized(control_result) == normalized(candidate_result)", parity)
+
+        auth_css = ROOT / "arcdb" / "static" / "css" / "auth.css"
+        version = hashlib.sha256(auth_css.read_bytes()).hexdigest()[:16]
+        expected_link = f'/static/css/auth.css?v={version}'
+        for name in (
+            "login.html", "register.html", "verify.html",
+            "forgot_password.html", "reset_password.html",
+        ):
+            self.assertIn(expected_link, templates[name])
+            self.assertNotIn("<style>", templates[name])
 
     def test_state_changes_are_centrally_origin_protected(self) -> None:
         text = TRACKED_APP.read_text(encoding="utf-8")

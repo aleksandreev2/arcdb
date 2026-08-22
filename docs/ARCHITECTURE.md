@@ -162,6 +162,12 @@ attributes and URL schemes and drops executable/embedded/foreign subtrees; it do
 not use regex replacement as the sanitization boundary. Malformed active markup
 fails closed. See `docs/SECURITY.md`.
 
+Browser executable code uses a fresh response nonce. The policy permits self-hosted
+or nonce-bearing scripts, blocks script attributes and has no CDN dependency. Shared
+auth CSS is content-versioned and immutable-cacheable. Large content-page styles
+remain inline temporarily, so `style-src 'unsafe-inline'` is explicitly planned for
+removal with the later behavior-preserving static CSS split.
+
 ### SQLite WAL
 
 For hot mutable application state:

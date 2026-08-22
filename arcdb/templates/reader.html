@@ -809,7 +809,7 @@ input[type=range].slider::-moz-range-thumb { width: 20px; height: 20px; border: 
   <div class="toast" id="toast" role="status"></div>
   <div class="sr-only" aria-live="polite" id="live"></div>
 
-<script>
+<script nonce="{{ g.csp_nonce }}">
 'use strict';
 (function () {
   /* ===================== Server-provided data ===================== */
@@ -1094,7 +1094,7 @@ input[type=range].slider::-moz-range-thumb { width: 20px; height: 20px; border: 
     host.className = 'endrecs';
     host.id = 'endRecs';
     host.innerHTML = `<div class="endrecs-head">
-        ${NOVEL_COVER ? `<img class="endrecs-cover" src="${esc(NOVEL_COVER)}" alt="" onerror="this.remove()">` : ''}
+        ${NOVEL_COVER ? `<img class="endrecs-cover" src="${esc(NOVEL_COVER)}" alt="">` : ''}
         <div class="endrecs-txt">
           <span class="endrecs-eyebrow">The end</span>
           <h2>You finished ${esc(NOVEL_TITLE)}</h2>
@@ -1105,6 +1105,8 @@ input[type=range].slider::-moz-range-thumb { width: 20px; height: 20px; border: 
           </div>
         </div>
       </div>`;
+    const endCover = host.querySelector('.endrecs-cover');
+    if (endCover) endCover.addEventListener('error', () => endCover.remove(), { once: true });
     $('reader').appendChild(host);
     document.getElementById('markFinishedBtn').onclick = markFinished;
     document.getElementById('backLibBtn').onclick = () => location.href = '/';
@@ -1324,11 +1326,19 @@ input[type=range].slider::-moz-range-thumb { width: 20px; height: 20px; border: 
         let imgsHtml = '';
         for (let i = 0; i < urls.length; i++) {
           const u = esc(urls[i]);
-          imgsHtml += `<img src="${u}" alt="Notice illustration asset ${i + 1}" `
+          imgsHtml += `<img class="notice-image" src="${u}" alt="Notice illustration asset ${i + 1}" `
             + `loading="lazy" decoding="async" referrerpolicy="no-referrer" `
-            + `onerror="this.onerror=null;const d=document.createElement('div');d.className='ph';d.textContent='Image unavailable';this.replaceWith(d);">`;
+            + `>`;
         }
         bodyEl.innerHTML = imgsHtml;
+        bodyEl.querySelectorAll('.notice-image').forEach(image => {
+          image.addEventListener('error', () => {
+            const placeholder = document.createElement('div');
+            placeholder.className = 'ph';
+            placeholder.textContent = 'Image unavailable';
+            image.replaceWith(placeholder);
+          }, { once: true });
+        });
       }
     }
   }

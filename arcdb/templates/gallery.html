@@ -5,12 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="color-scheme" content="dark">
 <title>ArchiveDB - Novel Library</title>
-<script src="/static/jszip.min.js"></script>
-<script>
-  if (typeof JSZip === 'undefined') {
-    document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"><\/script>');
-  }
-</script>
 <style>
   /* ============ Design tokens ============ */
   :root {
@@ -1219,7 +1213,7 @@
 
 <div class="toast-stack" id="toastStack" aria-live="polite"></div>
 
-<script>
+<script nonce="{{ g.csp_nonce }}">
 'use strict';
 
 /* ===================== State ===================== */
@@ -3103,9 +3097,15 @@ function renderUploadTagChips() {
   wrapper.innerHTML = selectedUploadTags.map((tag, idx) => `
     <span class="tag-chip">
       ${esc(tag)}
-      <button type="button" class="chip-remove" onclick="removeUploadTag(${idx})" aria-label="Remove tag">&times;</button>
+      <button type="button" class="chip-remove" data-upload-tag-index="${idx}" aria-label="Remove tag">&times;</button>
     </span>
   `).join('');
+
+  wrapper.querySelectorAll('[data-upload-tag-index]').forEach(button => {
+    button.addEventListener('click', () => {
+      removeUploadTag(Number(button.dataset.uploadTagIndex));
+    });
+  });
 
   hiddenInput.value = selectedUploadTags.join(', ');
 }
