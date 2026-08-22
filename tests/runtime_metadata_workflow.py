@@ -16,6 +16,7 @@ from arcdb.storage.state_parity import verify_metadata_domains_parity
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE_URL = os.environ.get("ARCHIVEDB_TEST_BASE_URL", "http://127.0.0.1:5004")
+ORIGIN = os.environ.get("ARCHIVEDB_TEST_ORIGIN", "http://127.0.0.1:5004")
 META_DIR = ROOT / "data" / "metadata"
 DB_PATH = ROOT / "data" / "arcdb.sqlite3"
 TEST_EMAIL = "phase2c-reader@example.test"
@@ -37,6 +38,8 @@ class ApiClient:
         expected_status: int = 200,
     ) -> bytes:
         headers = {"Content-Type": content_type} if content_type else {}
+        if data is not None:
+            headers["Origin"] = ORIGIN
         request = urllib.request.Request(
             f"{BASE_URL}{path}",
             data=data,

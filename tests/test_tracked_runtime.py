@@ -173,6 +173,33 @@ class TrackedRuntimeSourceTests(unittest.TestCase):
         self.assertNotIn('session.get("user_email"', request_log)
         self.assertNotIn("get_client_ip()", request_log)
 
+    def test_state_changes_are_centrally_origin_protected(self) -> None:
+        text = TRACKED_APP.read_text(encoding="utf-8")
+        self.assertIn("def enforce_state_change_origin", text)
+        self.assertIn('request.method not in {"POST", "PUT", "PATCH", "DELETE"}', text)
+        self.assertIn("request_source_allowed(", text)
+        self.assertIn('@app.route("/logout", methods=["POST"])', text)
+        gallery = (ROOT / "arcdb" / "templates" / "gallery.html").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('<form action="/logout" method="post"', gallery)
+        self.assertNotIn('href="/logout"', gallery)
+        dual_write = (ROOT / ".github" / "workflows" / "runtime-dual-write.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertGreaterEqual(
+            dual_write.count("Origin: http://127.0.0.1:5004"), 5
+        )
+        for workflow in (
+            "runtime_auth_workflow.py",
+            "runtime_collection_workflow.py",
+            "runtime_epub_workflow.py",
+            "runtime_metadata_workflow.py",
+            "runtime_read_parity.py",
+        ):
+            runtime = (ROOT / "tests" / workflow).read_text(encoding="utf-8")
+            self.assertIn("ARCHIVEDB_TEST_ORIGIN", runtime)
+
     def test_library_and_reader_runtime_paths_use_persistent_index(self) -> None:
         text = TRACKED_APP.read_text(encoding="utf-8")
 

@@ -146,6 +146,10 @@ backend without running a full migration preflight. Request timing logs use Flas
 route templates and omit identities, URLs, query strings and payloads; see
 `docs/OBSERVABILITY.md`.
 
+State-changing web methods pass through one Origin/Referer gate before route
+dispatch. Production uses an explicit public-origin allowlist; the repository does
+not guess the live tunnel hostname. Logout is POST-only. See `docs/SECURITY.md`.
+
 ### SQLite WAL
 
 For hot mutable application state:

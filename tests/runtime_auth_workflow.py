@@ -14,6 +14,7 @@ from werkzeug.security import check_password_hash
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE_URL = os.environ.get("ARCHIVEDB_TEST_BASE_URL", "http://127.0.0.1:5004").rstrip("/")
+ORIGIN = os.environ.get("ARCHIVEDB_TEST_ORIGIN", "http://127.0.0.1:5004")
 META = ROOT / "data" / "metadata"
 USERS_PATH = META / "users.json"
 DB_PATH = ROOT / "data" / "arcdb.sqlite3"
@@ -52,7 +53,12 @@ class Client:
 
     def post(self, path: str, fields: dict[str, str]):
         body = urllib.parse.urlencode(fields).encode("utf-8")
-        request = urllib.request.Request(BASE_URL + path, data=body, method="POST")
+        request = urllib.request.Request(
+            BASE_URL + path,
+            data=body,
+            headers={"Origin": ORIGIN},
+            method="POST",
+        )
         return self.opener.open(request, timeout=30)
 
 
@@ -101,12 +107,12 @@ def main() -> int:
     assert verified["pwd_hash"] == original_hash
     assert not {"code_hash", "code_expires", "code_attempts"} & set(verified)
 
-    client.get("/logout")
+    client.post("/logout", {})
     response = client.post(
         "/login", {"email": email, "password": original_password}
     )
     assert urllib.parse.urlparse(response.geturl()).path == "/", response.geturl()
-    client.get("/logout")
+    client.post("/logout", {})
 
     response = client.post("/forgot", {"email": email})
     assert urllib.parse.urlparse(response.geturl()).path == "/reset_password", response.geturl()
@@ -137,7 +143,7 @@ def main() -> int:
         "reset_code_attempts",
     } & set(reset)
 
-    client.get("/logout")
+    client.post("/logout", {})
     response = client.post(
         "/login", {"email": email, "password": replacement_password}
     )
