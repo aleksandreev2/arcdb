@@ -260,16 +260,17 @@ It opens SQLite read-only and verifies:
 
 Local `start.bat` performs this parity check before starting. A compatible equal shadow is reused. A missing/stale local shadow is rebuilt safely from JSON. Automatic rebuild is refused outside `ARCHIVEDB_LOCAL_DEV=1`.
 
-### Runtime overlay mechanism
+### Tracked runtime source
 
-The Flask source is still reconstructed from a verified compressed baseline. Until it becomes a normally tracked package, `scripts/runtime_overlays.py` applies the dual-write hook during materialization.
+The behavior-compatible Flask source and templates are tracked directly in
+`arcdb/app.py` and `arcdb/templates/`. All Phase 2/3 hooks formerly introduced by
+`scripts/runtime_overlays.py` are present in the tracked source. Local startup and
+runtime CI execute that source directly; no materialization step can alter storage
+behavior before launch.
 
-The overlay is intentionally fail-closed:
-
-- exact code markers must match once;
-- unexpected baseline changes fail materialization;
-- overlay file hash participates in `.runtime.sha256`;
-- this is transitional plumbing, not the target architecture.
+The compressed baseline/materializer/overlay remain historical provenance and
+reconciliation tooling only. New storage changes must be normal reviewed edits to
+the tracked runtime, never new overlay replacements.
 
 ### Phase 2B — collections
 

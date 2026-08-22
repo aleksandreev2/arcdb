@@ -1,0 +1,3337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<title>ArchiveDB - Novel Library</title>
+<script src="/static/jszip.min.js"></script>
+<script>
+  if (typeof JSZip === 'undefined') {
+    document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"><\/script>');
+  }
+</script>
+<style>
+  /* ============ Design tokens ============ */
+  :root {
+    --bg: #0a0c10;
+    --surface: #11141b;
+    --surface-2: #161a23;
+    --surface-3: #1d2230;
+    --border: #232938;
+    --border-strong: #323b52;
+    --text: #e8ecf3;
+    --text-2: #a3abbc;
+    --text-3: #6d7589;
+    --accent: #7c8cff;
+    --accent-strong: #5b6ae8;
+    --accent-soft: rgba(124, 140, 255, 0.12);
+    --accent-2: #a78bff;
+    --grad: linear-gradient(135deg, #6d7dff, #9a6bff);
+    --green: #34d399; --green-soft: rgba(52, 211, 153, 0.12);
+    --amber: #fbbf24; --amber-soft: rgba(251, 191, 36, 0.12);
+    --red: #f87171;   --red-soft: rgba(248, 113, 113, 0.12);
+    --blue: #60a5fa;  --blue-soft: rgba(96, 165, 250, 0.12);
+    --radius: 10px; --radius-sm: 7px; --radius-lg: 14px;
+    --shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scrollbar-color: var(--border-strong) transparent; }
+  body {
+    margin: 0; color: var(--text); font-family: var(--font); font-size: 15px; line-height: 1.5;
+    background:
+      radial-gradient(ellipse 900px 420px at 15% -8%, rgba(124, 140, 255, 0.09), transparent),
+      radial-gradient(ellipse 700px 380px at 95% 4%, rgba(167, 139, 255, 0.05), transparent),
+      var(--bg);
+    background-attachment: fixed;
+  }
+  button { font-family: inherit; }
+  ::selection { background: var(--accent-soft); }
+
+  /* ============ Top bar ============ */
+  .topbar { position: sticky; top: 0; z-index: 50; background: rgba(10, 12, 16, 0.88); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+  .topbar-inner { max-width: 1440px; margin: 0 auto; padding: 12px 24px; display: flex; align-items: center; gap: 16px; }
+  .brand { font-size: 19px; font-weight: 800; letter-spacing: -0.4px; color: var(--text); text-decoration: none; white-space: nowrap; }
+  .brand span { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .search-wrap { flex: 1 1 auto; max-width: 1000px; position: relative; margin-top: 4px; }
+  .search-wrap svg { position: absolute; left: 18px; top: 50%; transform: translateY(-50%); width: 22px; height: 22px; stroke: var(--text-3); fill: none; stroke-width: 2.2; pointer-events: none; }
+  .search-bar { width: 100%; height: 52px; padding: 13px 80px 13px 52px; border-radius: 12px; border: 1.5px solid var(--border); background: var(--surface); color: var(--text); font-size: 16.5px; font-weight: 500; outline: none; box-shadow: 0 3px 12px rgba(0, 0, 0, 0.25); transition: border-color 0.15s, box-shadow 0.15s; }
+  .search-bar:focus { border-color: var(--accent-strong); box-shadow: 0 0 0 3px var(--accent-soft), 0 4px 16px rgba(0, 0, 0, 0.35); }
+  .search-kbd { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); font-size: 12.5px; color: var(--text-3); border: 1px solid var(--border); border-radius: 6px; padding: 3px 9px; background: var(--surface-2); pointer-events: none; }
+  .topbar-actions { display: flex; gap: 8px; align-items: center; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 9px 15px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 13px; font-weight: 600; cursor: pointer; text-decoration: none; transition: background 0.15s, border-color 0.15s, color 0.15s; white-space: nowrap; }
+  .btn:hover { background: var(--surface-3); border-color: var(--border-strong); }
+  .btn:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 1px; }
+  .btn svg { flex-shrink: 0; }
+  .btn .ico { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .btn-primary { background: var(--accent-strong); border-color: var(--accent-strong); color: #fff; }
+  .btn-primary:hover { background: var(--accent); border-color: var(--accent); }
+  .btn-danger-ghost { color: var(--red); border-color: rgba(248, 113, 113, 0.35); }
+  .btn-danger-ghost:hover { background: var(--red-soft); border-color: var(--red); }
+  .btn-ghost { background: transparent; }
+  .btn[disabled] { opacity: 0.45; cursor: not-allowed; }
+  .btn-community { background: var(--grad); border-color: transparent; color: #fff; box-shadow: 0 4px 14px rgba(109, 125, 255, 0.25); }
+  .btn-community:hover { background: var(--grad); border-color: transparent; filter: brightness(1.12); }
+  .btn-donate { color: var(--green); border-color: rgba(52, 211, 153, 0.35); }
+  .btn-donate:hover { background: var(--green-soft); border-color: var(--green); color: var(--green); }
+  .btn-donate svg { fill: currentColor; stroke: none; }
+
+  /* User upload badges & modal styles */
+  .mini-badge.uploaded {
+    color: #f0abfc;
+    background: rgba(217, 70, 239, 0.12);
+    border: 1px solid rgba(217, 70, 239, 0.35);
+  }
+  .detail-badges .badge.uploaded {
+    position: static;
+    background: #a21caf;
+  }
+  .upload-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+  .upload-grid .full {
+    grid-column: 1 / -1;
+  }
+  .upload-file {
+    padding: 10px;
+    cursor: pointer;
+  }
+  .upload-help {
+    margin: 6px 0 0;
+    color: var(--text-3, #a1a1aa);
+    font-size: 11.5px;
+    line-height: 1.55;
+  }
+  .upload-progress {
+    display: none;
+    margin-top: 14px;
+    padding: 11px 13px;
+    border-radius: var(--radius, 8px);
+    color: var(--accent, #7c8cff);
+    background: var(--accent-soft, rgba(124, 140, 255, 0.12));
+    border: 1px solid rgba(124, 140, 255, 0.35);
+    font-size: 12.5px;
+  }
+  .upload-progress.visible {
+    display: block;
+  }
+
+  /* ============ Layout ============ */
+  .container { max-width: 1440px; margin: 0 auto; padding: 20px 24px 60px; }
+
+  /* ============ Toolbar ============ */
+  .toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+  .seg { display: inline-flex; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 3px; gap: 2px; flex-wrap: wrap; }
+  .seg button { border: none; background: transparent; color: var(--text-2); font-size: 13px; font-weight: 600; padding: 6px 12px; border-radius: 7px; cursor: pointer; transition: background 0.15s, color 0.15s; }
+  .seg button:hover { color: var(--text); }
+  .seg button.active { background: var(--grad); color: #fff; }
+  .toolbar-right { display: flex; gap: 8px; align-items: center; margin-left: auto; flex-wrap: wrap; }
+  .toolbar-right .btn .ico { width: 15px; height: 15px; }
+  .select { padding: 8px 30px 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface) url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236d7589' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 10px center; color: var(--text); font-size: 13px; font-weight: 500; outline: none; cursor: pointer; appearance: none; }
+  .select:focus { border-color: var(--accent-strong); }
+  .filter-toggle .count { background: var(--accent-strong); color: #fff; border-radius: 99px; font-size: 11px; min-width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; padding: 0 5px; }
+  .filter-toggle .count[hidden] { display: none; }
+
+  /* ============ Filter panel ============ */
+  .filter-panel { display: none; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 18px; margin-bottom: 16px; }
+  .filter-panel.open { display: block; }
+  #filterScrim { display: none; }
+  .filter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 16px; }
+  .field label { display: block; font-size: 11px; font-weight: 700; letter-spacing: 0.7px; text-transform: uppercase; color: var(--text-3); margin-bottom: 6px; }
+  .input, .field .select { width: 100%; }
+  .input { padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface-2); color: var(--text); font-size: 13px; outline: none; transition: border-color 0.15s; }
+  .input:focus { border-color: var(--accent-strong); }
+  .range-pair { display: flex; gap: 8px; }
+  .tags-block { border-top: 1px solid var(--border); padding-top: 14px; }
+  .tags-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+  .tags-head .legend { display: flex; gap: 14px; font-size: 12px; color: var(--text-3); }
+  .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; }
+  .tag-search { max-width: 260px; flex: 1; min-width: 160px; }
+  .tag-cloud { display: flex; flex-wrap: wrap; gap: 7px; max-height: 220px; overflow-y: auto; padding-right: 6px; }
+  .ftag { background: var(--surface-2); color: var(--text-2); padding: 5px 12px; border-radius: 99px; font-size: 12px; cursor: pointer; border: 1px solid transparent; transition: all 0.15s; user-select: none; }
+  .ftag:hover { color: var(--text); border-color: var(--border-strong); }
+  .ftag.inc { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-strong); }
+  .ftag.exc { background: var(--red-soft); color: var(--red); border-color: var(--red); text-decoration: line-through; }
+  .filter-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; border-top: 1px solid var(--border); padding-top: 14px; }
+
+  /* ============ Active chips ============ */
+  .chips { display: none; flex-wrap: wrap; gap: 7px; margin-bottom: 14px; align-items: center; }
+  .chips.visible { display: flex; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; background: var(--surface); border: 1px solid var(--border); color: var(--text-2); border-radius: 99px; padding: 4px 6px 4px 12px; font-size: 12px; font-weight: 500; }
+  .chip.inc { color: var(--accent); border-color: rgba(124,140,255,.4); }
+  .chip.exc { color: var(--red); border-color: rgba(248,113,113,.4); }
+  .chip button { border: none; background: var(--surface-3); color: inherit; width: 18px; height: 18px; border-radius: 50%; cursor: pointer; font-size: 11px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+  .chip button:hover { background: var(--border-strong); }
+  .chips .clear-all { background: none; border: none; color: var(--text-3); font-size: 12px; cursor: pointer; text-decoration: underline; padding: 4px 6px; }
+  .chips .clear-all:hover { color: var(--text); }
+
+  /* ============ Library section head ============ */
+  .lib-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 26px 0 14px; flex-wrap: wrap; }
+  .lib-tools { display: flex; align-items: center; gap: 14px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
+  .btn-icon { padding: 9px 10px; }
+  .results-meta { display: flex; align-items: baseline; gap: 10px; color: var(--text-3); font-size: 12.5px; }
+  .results-meta strong { color: var(--text-2); font-size: 12.5px; font-weight: 600; }
+
+  /* ============ Grid & rich library cards ============ */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 14px; margin-bottom: 36px; }
+  .card { position: relative; display: flex; gap: 13px; padding: 12px; background: linear-gradient(180deg, #141826, #10131c); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; cursor: pointer; transition: border-color 0.18s, transform 0.18s, box-shadow 0.18s; }
+  .card:hover { border-color: rgba(124, 140, 255, 0.45); transform: translateY(-2px); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), 0 0 24px rgba(124, 140, 255, 0.07); }
+  .card:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 2px; }
+  .cover-wrap { position: relative; flex: 0 0 128px; aspect-ratio: 2 / 3; border-radius: 9px; overflow: hidden; background: var(--surface-2); align-self: flex-start; }
+  .cover { width: 100%; height: 100%; object-fit: cover; display: block; }
+  body.hide-covers .cover-wrap { display: none; }
+  .badge { position: absolute; font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 6px; color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.35); z-index: 2; }
+  .badge-19 { top: 7px; left: 7px; background: #dc2626; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; padding: 0; font-size: 10px; }
+  .badge.complete { position: static; background: #059669; }
+  .badge.new { position: static; background: #2563eb; }
+  .badge.updated { position: static; background: #8b5cf6; }
+  .progress-rail { position: absolute; bottom: 0; left: 0; width: 100%; height: 3px; background: rgba(0,0,0,0.55); z-index: 2; }
+  .progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width 0.3s; }
+
+  .card-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+  .title-en { margin: 0; font-size: 14.5px; font-weight: 750; line-height: 1.3; letter-spacing: -0.2px; color: var(--text); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .title-kr { margin: 0; font-size: 11px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card-meta { margin: 0; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 11.5px; color: var(--text-2); }
+  .card-meta .author { font-weight: 600; }
+  .mini-badge { font-size: 9px; font-weight: 800; letter-spacing: 0.4px; text-transform: uppercase; padding: 2px 7px; border-radius: 99px; }
+  .mini-badge.updated { color: #a855f7; background: rgba(168, 85, 247, 0.15); border: 1px solid rgba(168, 85, 247, 0.3); }
+  .mini-badge.complete { color: var(--green); background: var(--green-soft); border: 1px solid rgba(52, 211, 153, 0.3); }
+  .mini-badge.new { color: var(--blue); background: var(--blue-soft); border: 1px solid rgba(96, 165, 250, 0.3); }
+  .tag-row { display: flex; flex-wrap: wrap; gap: 5px; }
+  .card-syn { margin: 0; font-size: 12.5px; color: var(--text-2); line-height: 1.55; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .card-foot { margin-top: auto; padding-top: 9px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--text-3); }
+  .stat { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+  .stat svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; opacity: 0.75; }
+  .translated-mark { display: inline-flex; align-items: center; margin-left: 3px; padding: 2px 7px; border-radius: 99px; border: 1px solid rgba(167, 139, 250, 0.34); background: linear-gradient(135deg, rgba(124, 58, 237, 0.18), rgba(236, 72, 153, 0.13)); color: #c4b5fd; font-size: 8.5px; font-weight: 800; letter-spacing: 0.55px; line-height: 1.2; text-transform: uppercase; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05); }
+  .detail-stats .translated-mark { font-size: 8px; padding: 2px 6px; }
+  .status-pill { margin-left: auto; font-size: 10px; font-weight: 700; letter-spacing: 0.2px; padding: 3px 9px; border-radius: 99px; background: var(--surface-2); border: 1px solid var(--border-strong); color: var(--text-2); white-space: nowrap; }
+  .status-pill.want_to_read { color: var(--blue); border-color: rgba(96, 165, 250, 0.55); }
+  .status-pill.reading { color: var(--amber); border-color: rgba(251, 191, 36, 0.55); }
+  .status-pill.finished { color: var(--green); border-color: rgba(52, 211, 153, 0.55); }
+  .ctag { background: var(--surface-2); color: #aab4e8; padding: 2px 9px; border-radius: 99px; font-size: 11px; font-weight: 500; border: 1px solid rgba(170, 180, 232, 0.12); }
+  .ctag.more { cursor: pointer; color: var(--text-3); }
+  .ctag.more:hover { color: var(--text); }
+  .ctag[data-action="filter-tag"] {
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.12s;
+  }
+  .ctag[data-action="filter-tag"]:hover,
+  .ctag[data-action="filter-tag"]:focus-visible {
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-color: var(--accent-strong);
+    transform: translateY(-1px);
+    outline: none;
+  }
+
+  /* ============ Bulk selection ============ */
+  .btn.active-toggle { background: var(--grad); color: #fff; border-color: transparent; }
+  .card-select { position: absolute; top: 8px; right: 8px; width: 22px; height: 22px; z-index: 3; accent-color: var(--accent-strong); cursor: pointer; display: none; }
+  body.select-mode .card-select { display: block; }
+  body.select-mode .card { cursor: default; }
+  body.select-mode .cover-wrap::before { content: ''; position: absolute; inset: 0; background: rgba(10, 12, 16, 0.35); opacity: 0; transition: opacity 0.15s; z-index: 1; }
+  .card.selected { border-color: var(--accent-strong); box-shadow: 0 0 0 2px var(--accent-strong) inset; }
+  .card.selected .cover-wrap::before { opacity: 1; }
+  .bulk-bar { display: none; align-items: center; gap: 10px; flex-wrap: wrap; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius); padding: 10px 14px; margin-bottom: 14px; }
+  .bulk-bar.visible { display: flex; }
+  .bulk-bar .bulk-count { font-size: 13px; font-weight: 600; color: var(--text-2); margin-right: auto; }
+  .bulk-bar .btn-danger { color: var(--red); border-color: rgba(248, 113, 113, 0.35); }
+  .bulk-bar .btn-danger:hover:not(:disabled) { background: var(--red-soft); border-color: var(--red); }
+  .bulk-bar .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .btn-block { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 9px 12px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; text-decoration: none; cursor: pointer; border: 1px solid transparent; transition: background 0.15s, border-color 0.15s; text-align: center; }
+  .btn-read { background: var(--accent-strong); color: #fff; }
+  .btn-read:hover { background: var(--accent); }
+  .btn-read.continue { background: var(--green-soft); color: var(--green); border-color: rgba(52, 211, 153, 0.4); }
+  .btn-read.continue:hover { border-color: var(--green); }
+  .btn-dl { background: var(--surface-2); color: var(--text); border-color: var(--border); }
+  .btn-dl:hover { border-color: var(--border-strong); background: var(--surface-3); }
+  .btn-sub { background: transparent; color: var(--text-2); border-color: var(--border); }
+  .btn-sub:hover { color: var(--text); border-color: var(--border-strong); }
+  .btn-block.busy { opacity: 0.55; pointer-events: none; }
+
+  /* ============ Poster grid view ============ */
+  body.view-grid .grid { grid-template-columns: repeat(auto-fill, minmax(245px, 1fr)); gap: 16px; }
+  body.view-grid .card, body.view-grid .sk-card { flex-direction: column; gap: 0; padding: 0; }
+  body.view-grid .cover-wrap, body.view-grid .sk-cover { flex: none; width: 100%; aspect-ratio: 2 / 3; border-radius: 13px 13px 0 0; align-self: stretch; }
+  body.view-grid .card-main { padding: 11px 13px 13px; gap: 6px; flex: 1; }
+  body.view-grid .sk-body { padding: 10px 12px 14px; }
+  body.view-grid .title-en { font-size: 14px; }
+  body.view-grid .card-foot { gap: 9px; padding-top: 8px; }
+  body.view-grid .card-meta { font-size: 11px; }
+  body.view-grid .progress-rail { height: 4px; }
+  .pagesize-sel { appearance: none; height: 35px; padding: 0 30px 0 12px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface) url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236d7589' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 11px center; color: var(--text); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; outline: none; cursor: pointer; }
+  .pagesize-sel:hover { border-color: var(--border-strong); }
+  .pagesize-sel:focus-visible { border-color: var(--accent-strong); box-shadow: 0 0 0 3px var(--accent-soft); }
+  #viewSeg button { padding: 6px 10px; display: inline-flex; align-items: center; }
+  #viewSeg svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; display: block; }
+
+  body.hide-covers .sim-card img, body.hide-covers .detail-cover, body.hide-covers .detail-backdrop { display: none; }
+
+  /* ============ Skeletons / states ============ */
+  .sk-card { display: flex; gap: 13px; padding: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; }
+  .sk { background: linear-gradient(100deg, var(--surface-2) 40%, var(--surface-3) 50%, var(--surface-2) 60%); background-size: 200% 100%; animation: shimmer 1.4s infinite; }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+  .sk-cover { flex: 0 0 128px; aspect-ratio: 2 / 3; border-radius: 9px; }
+  body.hide-covers .sk-cover { display: none; }
+  .sk-body { flex: 1; min-width: 0; }
+  .sk-line { height: 12px; border-radius: 6px; margin: 10px 0 0; }
+  .sk-body .sk-line:first-child { margin-top: 4px; }
+  .sk-line.short { width: 50%; }
+  .state-panel { grid-column: 1 / -1; text-align: center; padding: 70px 20px; color: var(--text-2); }
+  .state-panel h3 { color: var(--text); margin: 14px 0 6px; font-size: 17px; }
+  .state-panel p { margin: 0 0 18px; font-size: 13.5px; color: var(--text-3); }
+  .state-icon svg { width: 44px; height: 44px; stroke: var(--text-3); fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+
+  /* ============ Pagination ============ */
+  .pagination { display: flex; justify-content: center; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .page-btn { background: var(--surface); border: 1px solid var(--border); color: var(--text-2); padding: 8px 13px; border-radius: var(--radius-sm); cursor: pointer; font-size: 13px; font-weight: 600; transition: 0.15s; }
+  .page-btn:hover:not(:disabled):not(.active) { background: var(--surface-3); color: var(--text); }
+  .page-btn.active { background: var(--accent-strong); border-color: var(--accent-strong); color: #fff; }
+  .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .page-ellipsis { color: var(--text-3); padding: 0 4px; }
+  .page-jump { display: flex; align-items: center; gap: 6px; margin-left: 14px; padding-left: 14px; border-left: 1px solid var(--border); }
+  .page-input { width: 58px; background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: var(--radius-sm); padding: 8px; text-align: center; outline: none; font-size: 13px; }
+  .page-input:focus { border-color: var(--accent-strong); }
+
+  /* ============ Modals ============ */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(4, 6, 10, 0.72); z-index: 1000; justify-content: center; align-items: center; backdrop-filter: blur(5px); padding: 20px; }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--surface); width: 100%; max-width: 520px; border-radius: var(--radius-lg); border: 1px solid var(--border-strong); max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow); }
+  .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--surface); }
+  .modal-head h2 { margin: 0; font-size: 16px; }
+  .modal-close { background: none; border: none; color: var(--text-3); font-size: 20px; cursor: pointer; padding: 2px 6px; line-height: 1; border-radius: 6px; }
+  .modal-close:hover { color: var(--text); background: var(--surface-3); }
+  .modal-body { padding: 20px 22px; }
+  .form-group { margin-bottom: 14px; }
+  .form-group label { display: block; margin-bottom: 5px; color: var(--text-3); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; }
+  .form-control { width: 100%; padding: 9px 12px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text); border-radius: var(--radius-sm); font-family: inherit; font-size: 13.5px; outline: none; }
+  .form-control:focus { border-color: var(--accent-strong); }
+  .modal-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 22px; border-top: 1px solid var(--border); }
+  .dmca-text { font-size: 13px; color: var(--text-2); line-height: 1.7; }
+  .dmca-text ol { padding-left: 20px; margin: 10px 0; }
+  .dmca-text a { color: var(--accent); font-weight: 600; text-decoration: none; }
+
+  /* ============ Donate modal ============ */
+  .donate-intro { font-size: 13px; color: var(--text-2); line-height: 1.65; margin: 0 0 14px; }
+  .donate-costs { list-style: none; margin: 0 0 16px; padding: 12px 14px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; }
+  .donate-costs li { font-size: 12.5px; color: var(--text-2); display: flex; align-items: center; gap: 8px; }
+  .donate-costs li svg { width: 15px; height: 15px; stroke: var(--accent); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+  .donate-list { display: flex; flex-direction: column; gap: 12px; }
+  .donate-row { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+  .donate-row-head { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; }
+  .donate-coin-icon { width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; color: #fff; flex-shrink: 0; }
+  .coin-btc { background: #f7931a; }
+  .coin-eth { background: #627eea; }
+  .coin-usdt { background: #26a17b; }
+  .coin-usdc { background: #2775ca; }
+  .donate-coin-name { font-size: 13.5px; font-weight: 700; color: var(--text); }
+  .donate-coin-net { font-size: 11px; font-weight: 600; color: var(--text-3); margin-left: auto; background: var(--surface-3); border: 1px solid var(--border); padding: 2px 8px; border-radius: 99px; white-space: nowrap; }
+  .donate-addr-row { display: flex; gap: 8px; align-items: stretch; }
+  .donate-addr { flex: 1; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; color: var(--text-2); background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 10px; word-break: break-all; line-height: 1.5; }
+  .copy-btn { flex: 0 0 auto; min-width: 78px; }
+  .copy-btn.copied { color: var(--green); border-color: var(--green); }
+  .donate-note { font-size: 11.5px; color: var(--text-3); margin: 16px 0 0; line-height: 1.6; }
+
+  /* ============ Toasts ============ */
+  .toast-stack { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 2000; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; }
+  .toast { background: var(--surface-3); border: 1px solid var(--border-strong); color: var(--text); padding: 10px 18px; border-radius: 99px; font-size: 13px; font-weight: 500; box-shadow: var(--shadow); animation: toast-in 0.25s ease; max-width: 90vw; pointer-events: auto; }
+  .toast .toast-btn { background: none; border: none; color: var(--accent); font-weight: 700; cursor: pointer; font-size: 13px; margin-left: 8px; padding: 0; }
+  .toast.success { border-color: rgba(52, 211, 153, 0.5); }
+  .toast.error { border-color: rgba(248, 113, 113, 0.5); }
+  @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+  /* ============ Responsive ============ */
+  @media (max-width: 880px) {
+    .topbar-inner { flex-wrap: wrap; padding: 10px 14px; gap: 10px; }
+    .search-wrap { order: 3; flex-basis: 100%; max-width: none; }
+    .search-wrap svg { left: 12px; width: 16px; height: 16px; }
+    .search-bar { height: auto; padding: 9px 64px 9px 36px; font-size: 14px; border-width: 1px; }
+    .search-kbd { display: none; }
+    .topbar-actions { gap: 6px; }
+    .container { padding: 14px 14px 50px; }
+    .grid { grid-template-columns: 1fr; gap: 10px; }
+    body.view-grid .grid { grid-template-columns: repeat(auto-fill, minmax(165px, 1fr)); gap: 10px; }
+    body.view-grid .card-syn { -webkit-line-clamp: 2; }
+    body.view-grid .title-en { font-size: 13px; }
+    .card { padding: 10px; gap: 10px; }
+    .cover-wrap, .sk-cover { flex-basis: 102px; }
+    .card-main { gap: 5px; }
+    .title-en { font-size: 13.5px; }
+    .card-syn { font-size: 12px; }
+    .card-foot { gap: 9px; }
+    .ctag { font-size: 10px; padding: 2px 7px; }
+    .btn-block { padding: 8px 6px; font-size: 11.5px; }
+    .toolbar { gap: 8px; }
+    .seg { max-width: 100%; }
+    #myListSeg { width: 100%; flex-wrap: nowrap; }
+    #myListSeg button { flex: 1 1 auto; min-width: 0; font-size: clamp(10px, 2.8vw, 12.5px); padding: 6px 4px; white-space: nowrap; overflow: hidden; }
+    .toolbar-right { margin-left: 0; width: 100%; flex-wrap: nowrap; gap: 6px; }
+    .toolbar-right .select { flex: 1 1 auto; min-width: 0; font-size: 12px; }
+    .toolbar-right .btn { flex: 0 1 auto; min-width: 0; padding: 8px 9px; font-size: 12px; }
+    .toolbar-right .btn .ico { width: 14px; height: 14px; }
+
+    #filterScrim.show { display: block; position: fixed; inset: 0; z-index: 940; background: rgba(4, 6, 10, 0.6); backdrop-filter: blur(2px); }
+    .filter-panel { display: block; position: fixed; top: 0; right: 0; bottom: 0; width: min(400px, 92vw); margin: 0; z-index: 950; border: none; border-left: 1px solid var(--border); border-radius: 0; overflow-y: auto; padding: 18px 18px 0; transform: translateX(105%); visibility: hidden; transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.28s; }
+    .filter-panel.open { transform: translateX(0); visibility: visible; }
+    .filter-foot { position: sticky; bottom: 0; margin: 14px -18px 0; padding: 14px 18px; background: var(--surface); }
+    .filter-foot .btn { flex: 1; padding: 12px; }
+    .tag-cloud { max-height: 40vh; }
+    .donate-addr-row { flex-direction: column; }
+    .copy-btn { min-width: 0; }
+    .donate-costs { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 640px) {
+    .upload-grid {
+      grid-template-columns: 1fr;
+    }
+    .upload-grid .full {
+      grid-column: auto;
+    }
+  }
+  @media (max-width: 480px) {
+    .btn { padding: 8px 12px; font-size: 12.5px; }
+    .brand { font-size: 17px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+
+  /* ============ Collections ============ */
+  .coll-create-row { display: flex; gap: 8px; margin-bottom: 16px; }
+  .coll-list { display: flex; flex-direction: column; gap: 8px; }
+  .coll-item { display: flex; align-items: center; gap: 10px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; }
+  .coll-item .coll-name { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600; color: var(--text); background: var(--bg); border: 1px solid var(--accent-strong); border-radius: 6px; padding: 4px 6px; outline: none; }
+  .coll-item .coll-name-btn { flex: 1; min-width: 0; font-size: 13.5px; font-weight: 600; color: var(--text); background: none; border: none; border-radius: 6px; padding: 4px 6px; text-align: left; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color 0.15s; }
+  .coll-item .coll-name-btn:hover, .coll-item .coll-name-btn:focus-visible { color: var(--accent); outline: none; }
+  .coll-item .coll-count { font-size: 11.5px; color: var(--text-3); white-space: nowrap; }
+  .coll-item .icon-btn { background: none; border: none; color: var(--text-3); cursor: pointer; padding: 5px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; }
+  .coll-item .icon-btn svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .coll-item .icon-btn:hover { color: var(--text); background: var(--surface-3); }
+  .coll-item .icon-btn.accent:hover { color: var(--accent); }
+  .coll-item .icon-btn.danger:hover { color: var(--red); }
+  .coll-empty { color: var(--text-3); font-size: 13px; text-align: center; padding: 16px 0; line-height: 1.6; }
+
+  .assign-list { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
+  .assign-row { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); cursor: pointer; font-size: 13.5px; }
+  .assign-row:hover { border-color: var(--border-strong); }
+  .assign-row input { width: 16px; height: 16px; accent-color: var(--accent); }
+  .assign-row .ac-count { margin-left: auto; font-size: 11.5px; color: var(--text-3); }
+
+  /* ============ Home shelves & section heads ============ */
+  .shelf { margin-bottom: 26px; }
+  .shelf-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+  .shelf-head { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 15px; font-weight: 800; letter-spacing: -0.3px; color: var(--text); }
+  .shelf-head::before { content: ""; width: 4px; height: 16px; border-radius: 3px; background: var(--grad); flex-shrink: 0; }
+  .see-all { background: none; border: none; color: var(--text-3); font-size: 12px; font-weight: 600; cursor: pointer; padding: 4px 6px; border-radius: 6px; transition: color 0.15s; }
+  .see-all:hover { color: var(--accent); }
+  .shelf .sim-rail { padding-bottom: 8px; }
+  a.sim-card { display: block; text-decoration: none; color: inherit; }
+  .sim-prog { height: 3px; border-radius: 2px; background: rgba(0, 0, 0, 0.55); margin-top: 6px; overflow: hidden; }
+  .sim-prog i { display: block; height: 100%; background: var(--accent); }
+  button.sim-more { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 200px; border: 1px dashed var(--border-strong); background: transparent; color: var(--text-3); font-size: 12px; font-weight: 600; }
+  button.sim-more:hover, button.sim-more:focus-visible { color: var(--accent); border-color: var(--accent-strong); background: var(--accent-soft); }
+  button.sim-more .plus { font-size: 22px; font-weight: 700; line-height: 1; }
+  button.sim-more:disabled { opacity: 0.5; cursor: wait; }
+  .sim-card { position: relative; min-width: 0; }
+  .sim-why { margin-top: 3px; font-size: 10px; color: var(--accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: 0.85; }
+  .sim-why svg { width: 10px; height: 10px; stroke: currentColor; fill: none; stroke-width: 2; vertical-align: -1px; margin-right: 3px; }
+  .sim-why.gem { color: var(--amber); }
+  .sim-why.trend { color: var(--green); }
+  .sim-x { position: absolute; top: 10px; right: 10px; z-index: 2; width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--border-strong); background: rgba(10, 12, 16, 0.78); color: var(--text-2); font-size: 13px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; opacity: 0; transition: opacity 0.15s, color 0.15s, border-color 0.15s; }
+  .sim-card:hover .sim-x, .sim-x:focus-visible { opacity: 1; }
+  .sim-x:hover { color: var(--red); border-color: var(--red); }
+  @media (hover: none) { .sim-x { opacity: 0.7; } }
+
+  /* ============ Novel detail modal ============ */
+  .card { cursor: pointer; }
+  #detailModal { z-index: 900; }
+  .modal.detail { max-width: 860px; padding: 0; position: relative; }
+  .detail-close { position: absolute; top: 12px; right: 12px; z-index: 5; width: 34px; height: 34px; border: 1px solid var(--border-strong); border-radius: 50%; background: rgba(13, 16, 22, 0.72); backdrop-filter: blur(6px); color: var(--text-2); font-size: 19px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
+  .detail-close:hover { color: var(--text); border-color: var(--text-3); }
+  .detail-hero { position: relative; display: flex; gap: 20px; align-items: flex-end; padding: 28px 26px 20px; border-bottom: 1px solid var(--border); overflow: hidden; border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+  .detail-hero > * { position: relative; z-index: 1; }
+  .detail-hero .detail-backdrop { position: absolute; inset: -48px; z-index: 0; background-size: cover; background-position: center 25%; filter: blur(36px) saturate(1.2) brightness(0.55); opacity: 0.55; }
+  .detail-hero::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(17, 20, 27, 0.15), var(--surface) 97%); }
+  .detail-cover { width: 188px; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 12px; border: 1px solid var(--border-strong); box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.06); background: var(--surface-2); flex-shrink: 0; display: block; }
+  .detail-head { min-width: 0; padding-bottom: 2px; }
+  .detail-title { margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.25; }
+  .detail-title-kr { margin: 5px 0 0; font-size: 13px; color: var(--text-2); }
+  .detail-byline { margin: 8px 0 0; font-size: 13px; color: var(--text-2); }
+  .detail-badges { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+  .detail-badges .badge { position: static; }
+  .detail-badges .badge-19 { display: inline-flex; }
+  .detail-body { padding: 20px 26px 26px; }
+  .detail-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+  .detail-actions .btn-block { flex: 1 1 170px; }
+  .detail-note { color: var(--text-3); font-size: 13px; margin: 0; }
+  .detail-controls { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  .detail-status.want_to_read { color: var(--blue); border-color: var(--blue); }
+  .detail-status.reading { color: var(--amber); border-color: var(--amber); }
+  .detail-status.finished { color: var(--green); border-color: var(--green); }
+  .detail-stats { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  .detail-stats .stat { font-size: 11.5px; color: var(--text-2); padding: 5px 11px; border-radius: 99px; background: rgba(8, 10, 16, 0.55); border: 1px solid rgba(255, 255, 255, 0.09); backdrop-filter: blur(6px); }
+  .sect-label { margin: 0 0 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: var(--text-3); }
+  .btn-grad { background: var(--grad); color: #fff; border: 0; box-shadow: 0 6px 18px rgba(109, 125, 255, 0.25); }
+  .btn-grad:hover { filter: brightness(1.1); }
+  .btn-block svg { width: 15px; height: 15px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .detail-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+  .detail-syn { font-size: 13.5px; color: var(--text-2); line-height: 1.7; max-height: 250px; overflow-y: auto; padding-right: 8px; }
+  .sim-sect { border-top: 1px solid var(--border); margin-top: 20px; padding-top: 16px; }
+  .sim-head { margin: 0 0 12px; font-size: 11px; font-weight: 700; letter-spacing: 0.7px; text-transform: uppercase; color: var(--text-3); }
+  .sim-rail { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; scroll-snap-type: x proximity; }
+  .sim-card { flex: 0 0 118px; padding: 6px; border: 1px solid transparent; border-radius: 10px; cursor: pointer; scroll-snap-align: start; transition: background 0.15s, border-color 0.15s; }
+  .sim-card:hover, .sim-card:focus-visible { background: var(--surface-2); border-color: var(--border); outline: none; }
+  .sim-card img { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 7px; background: var(--surface-2); display: block; }
+  .sim-title { margin-top: 7px; font-size: 11.5px; font-weight: 600; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .sim-sub { margin-top: 2px; font-size: 10.5px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .detail-state { padding: 70px 24px; text-align: center; color: var(--text-2); }
+  .detail-state h3 { color: var(--text); margin: 0 0 6px; }
+  .detail-state p { margin: 0 0 18px; font-size: 13px; color: var(--text-3); }
+  @media (max-width: 640px) {
+    #detailModal { padding: 0; }
+    .modal.detail { max-width: none; height: 100%; max-height: none; border-radius: 0; border: none; }
+    .detail-hero { border-radius: 0; padding: 20px 16px 16px; gap: 14px; }
+    .detail-cover { width: 112px; }
+    .detail-title { font-size: 19px; }
+    .detail-body { padding: 16px 16px 28px; }
+    .detail-syn { max-height: none; overflow: visible; }
+  }
+
+  /* ============ Download packaging modal ============ */
+  .dl-spinner {
+    width: 42px;
+    height: 42px;
+    margin: 0 auto 16px;
+    border: 3.5px solid rgba(124, 140, 255, 0.2);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: dl-spin 0.8s linear infinite;
+  }
+  @keyframes dl-spin {
+    to { transform: rotate(360deg); }
+  }
+  .progress-bar-track {
+    height: 8px;
+    background: var(--surface-3);
+    border: 1px solid var(--border);
+    border-radius: 99px;
+    overflow: hidden;
+    margin-bottom: 12px;
+  }
+  .progress-bar-fill {
+    width: 0%;
+    height: 100%;
+    background: var(--grad);
+    transition: width 0.2s ease-out;
+  }
+
+  /* ============ Brand buttons (Discord / Patreon) ============ */
+  .btn-discord { color: #a9b4ff; border-color: rgba(88, 101, 242, 0.42); background: rgba(88, 101, 242, 0.10); }
+  .btn-discord:hover { background: rgba(88, 101, 242, 0.20); border-color: #5865f2; color: #cdd3ff; }
+  .btn-discord svg, .btn-patreon svg { fill: currentColor; stroke: none; }
+  .btn-patreon { color: #ff8a7a; border-color: rgba(255, 66, 77, 0.38); background: rgba(255, 66, 77, 0.09); }
+  .btn-patreon:hover { background: rgba(255, 66, 77, 0.18); border-color: #ff424d; color: #ffb3aa; }
+
+  /* ============ Patreon block inside the Donate modal ============ */
+  .patreon-card { position: relative; overflow: hidden; border: 1px solid rgba(255, 66, 77, 0.32); border-radius: var(--radius); padding: 15px 16px; margin-bottom: 18px; background: linear-gradient(135deg, rgba(255, 66, 77, 0.13), rgba(124, 140, 255, 0.07)); }
+  .patreon-card::after { content: ""; position: absolute; inset: -60% -30% auto auto; width: 180px; height: 180px; border-radius: 50%; background: radial-gradient(circle, rgba(255, 66, 77, 0.20), transparent 70%); pointer-events: none; }
+  .patreon-card-head { display: flex; align-items: center; gap: 9px; margin-bottom: 8px; position: relative; }
+  .patreon-card-head svg { width: 19px; height: 19px; fill: #ff424d; flex-shrink: 0; }
+  .patreon-card-head h3 { margin: 0; font-size: 14.5px; font-weight: 800; letter-spacing: -0.2px; }
+  .patreon-perks { list-style: none; margin: 0 0 13px; padding: 0; display: grid; gap: 7px; position: relative; }
+  .patreon-perks li { display: flex; align-items: flex-start; gap: 8px; font-size: 12.5px; color: var(--text-2); line-height: 1.55; }
+  .patreon-perks li svg { width: 14px; height: 14px; stroke: #ff8a7a; fill: none; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; margin-top: 2px; }
+  .btn-patreon-cta { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 16px; border-radius: var(--radius-sm); background: #ff424d; color: #fff; font-size: 13px; font-weight: 700; text-decoration: none; border: 0; box-shadow: 0 6px 18px rgba(255, 66, 77, 0.28); position: relative; }
+  .btn-patreon-cta:hover { filter: brightness(1.09); }
+  .btn-patreon-cta svg { width: 15px; height: 15px; fill: currentColor; }
+  .donate-or { display: flex; align-items: center; gap: 10px; margin: 0 0 14px; color: var(--text-3); font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
+  .donate-or::before, .donate-or::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+
+  /* ============ One-time welcome popup ============ */
+  #welcomeModal { z-index: 1200; }
+  .modal.welcome { max-width: 560px; padding: 0; overflow: hidden; border-color: rgba(124, 140, 255, 0.35); box-shadow: 0 30px 90px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.04); animation: welcome-pop 0.34s cubic-bezier(0.16, 1, 0.3, 1); }
+  @keyframes welcome-pop { from { opacity: 0; transform: translateY(14px) scale(0.97); } to { opacity: 1; transform: none; } }
+  .welcome-hero { position: relative; padding: 30px 26px 22px; text-align: center; overflow: hidden; border-bottom: 1px solid var(--border); }
+  .welcome-hero::before { content: ""; position: absolute; inset: -70% -10% auto; height: 260px; background: radial-gradient(ellipse at 50% 0%, rgba(124, 140, 255, 0.30), transparent 68%); pointer-events: none; }
+  .welcome-mark { position: relative; width: 54px; height: 54px; margin: 0 auto 14px; border-radius: 16px; background: var(--grad); display: flex; align-items: center; justify-content: center; box-shadow: 0 12px 34px rgba(109, 125, 255, 0.42); }
+  .welcome-mark svg { width: 27px; height: 27px; stroke: #fff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .welcome-hero h2 { position: relative; margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+  .welcome-hero h2 span { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .welcome-hero p { position: relative; margin: 9px auto 0; max-width: 420px; font-size: 13px; color: var(--text-2); line-height: 1.65; }
+  .welcome-body { padding: 20px 22px 22px; display: grid; gap: 12px; }
+  .wcard { display: flex; gap: 13px; padding: 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface-2); transition: border-color 0.18s, transform 0.18s, background 0.18s; }
+  .wcard:hover { transform: translateY(-1px); }
+  .wcard-icon { flex: 0 0 40px; height: 40px; border-radius: 11px; display: flex; align-items: center; justify-content: center; }
+  .wcard-icon svg { width: 21px; height: 21px; fill: #fff; }
+  .wcard-discord .wcard-icon { background: #5865f2; box-shadow: 0 8px 20px rgba(88, 101, 242, 0.35); }
+  .wcard-discord:hover { border-color: rgba(88, 101, 242, 0.55); background: rgba(88, 101, 242, 0.08); }
+  .wcard-patreon .wcard-icon { background: #ff424d; box-shadow: 0 8px 20px rgba(255, 66, 77, 0.32); }
+  .wcard-patreon:hover { border-color: rgba(255, 66, 77, 0.5); background: rgba(255, 66, 77, 0.07); }
+  .wcard-text { min-width: 0; flex: 1; }
+  .wcard-text h3 { margin: 0 0 4px; font-size: 14px; font-weight: 750; letter-spacing: -0.2px; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+  .wcard-tag { font-size: 9px; font-weight: 800; letter-spacing: 0.5px; text-transform: uppercase; padding: 2px 7px; border-radius: 99px; }
+  .wcard-tag.must { color: #cdd3ff; background: rgba(88, 101, 242, 0.20); border: 1px solid rgba(88, 101, 242, 0.4); }
+  .wcard-tag.opt { color: var(--text-2); background: var(--surface-3); border: 1px solid var(--border-strong); }
+  .wcard-text p { margin: 0 0 10px; font-size: 12.5px; color: var(--text-2); line-height: 1.6; }
+  .wcard-text ul { margin: 0 0 10px; padding-left: 17px; }
+  .wcard-text li { font-size: 12.5px; color: var(--text-2); line-height: 1.6; }
+  .wcard-cta { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: var(--radius-sm); font-size: 12.5px; font-weight: 700; text-decoration: none; color: #fff; }
+  .wcard-discord .wcard-cta { background: #5865f2; }
+  .wcard-patreon .wcard-cta { background: #ff424d; }
+  .wcard-cta:hover { filter: brightness(1.1); }
+  /* ============ Tag Chip Input & Dropdown ============ */
+  .tag-chip-input-container {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    min-height: 42px;
+    cursor: text;
+    transition: border-color 0.18s, box-shadow 0.18s;
+  }
+  .tag-chip-input-container:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(124, 140, 255, 0.18);
+  }
+  .tag-chips-wrapper {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  .tag-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(168, 85, 247, 0.16);
+    color: #e9d5ff;
+    border: 1px solid rgba(168, 85, 247, 0.35);
+    border-radius: 9999px;
+    padding: 3px 9px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .tag-chip .chip-remove {
+    background: none;
+    border: none;
+    color: #e9d5ff;
+    cursor: pointer;
+    padding: 0;
+    font-size: 13px;
+    line-height: 1;
+    opacity: 0.7;
+    margin-left: 2px;
+  }
+  .tag-chip .chip-remove:hover {
+    opacity: 1;
+    color: #f87171;
+  }
+  .tag-inline-input {
+    flex: 1;
+    min-width: 130px;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--fg);
+    font-size: 13px;
+    padding: 3px 0;
+  }
+  .tag-dropdown-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: #13141f;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    max-height: 200px;
+    overflow-y: auto;
+    z-index: 100;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+    display: none;
+  }
+  .tag-dropdown-menu.show {
+    display: block;
+  }
+  .tag-dropdown-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    font-size: 13px;
+    color: var(--text-1);
+    cursor: pointer;
+    transition: background 0.12s;
+  }
+  .tag-dropdown-item:hover, .tag-dropdown-item.active {
+    background: rgba(168, 85, 247, 0.22);
+    color: #f3e8ff;
+  }
+  .tag-dropdown-item .tag-count {
+    font-size: 11px;
+    opacity: 0.55;
+  }
+
+  @media (max-width: 560px) {
+    .modal.welcome { max-width: none; }
+    .welcome-hero { padding: 24px 18px 18px; }
+    .welcome-hero h2 { font-size: 19px; }
+    .welcome-body { padding: 16px 16px 18px; }
+    .wcard { flex-direction: column; gap: 10px; }
+    .welcome-foot { padding: 14px 16px; }
+    .welcome-foot .btn { width: 100%; }
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <a href="/" class="brand">Archive<span>DB</span></a>
+    <div class="search-wrap">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input type="search" id="searchInput" class="search-bar" placeholder="Search by title, Korean title or ID..." autocomplete="off">
+      <span class="search-kbd">/</span>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn" id="randomBtn" title="Pick a random novel matching current filters">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.4" fill="currentColor" stroke="none"/><circle cx="16" cy="8" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="8" cy="16" r="1.4" fill="currentColor" stroke="none"/><circle cx="16" cy="16" r="1.4" fill="currentColor" stroke="none"/></svg>
+        <span class="btn-label">Random</span>
+      </button>
+      <button class="btn" id="toggleCoverBtn">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="m21 15-4.5-4.5L5 21"/></svg>
+        <span class="btn-label">Hide covers</span>
+      </button>
+      <a href="https://discord.gg/xDqbcEENE2" target="_blank" rel="noopener noreferrer" class="btn btn-discord" title="Join the Discord - mirror links and announcements">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M20.32 4.37A19.79 19.79 0 0 0 15.89 3c-.22.39-.44.83-.63 1.29a18.3 18.3 0 0 0-5.51 0C9.55 3.83 9.33 3.39 9.11 3a19.74 19.74 0 0 0-4.43 1.37C1.9 8.51 1.14 12.55 1.52 16.53a19.9 19.9 0 0 0 6.02 3.04c.48-.66.91-1.36 1.28-2.09-.7-.26-1.37-.58-2-.96.17-.12.33-.25.49-.38a14.2 14.2 0 0 0 12.38 0c.16.14.32.26.49.38-.64.38-1.31.7-2.01.96.37.73.8 1.43 1.28 2.09a19.86 19.86 0 0 0 6.03-3.04c.44-4.6-.75-8.6-3.16-12.16zM8.68 14.08c-1.18 0-2.16-1.08-2.16-2.41 0-1.33.95-2.42 2.16-2.42 1.21 0 2.18 1.09 2.16 2.42 0 1.33-.96 2.41-2.16 2.41zm6.64 0c-1.18 0-2.16-1.08-2.16-2.41 0-1.33.95-2.42 2.16-2.42 1.21 0 2.18 1.09 2.16 2.42 0 1.33-.95 2.41-2.16 2.41z"/></svg>
+        <span class="btn-label">Discord</span>
+      </a>
+      <a href="/community" class="btn btn-community" title="Community - share novels and chat">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span class="btn-label">Community</span>
+      </a>
+      <button class="btn" id="uploadBtn" type="button" title="Upload your own novel">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 16V4"/>
+          <path d="m7 9 5-5 5 5"/>
+          <path d="M5 20h14a2 2 0 0 0 2-2v-3"/>
+          <path d="M3 15v3a2 2 0 0 0 2 2"/>
+        </svg>
+        <span class="btn-label">Upload</span>
+      </button>
+      <button class="btn btn-donate" id="donateBtn" title="Support ArchiveDB with crypto">
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+        <span class="btn-label">Donate</span>
+      </button>
+      <a href="https://www.patreon.com/cw/sigma6196/membership" target="_blank" rel="noopener noreferrer" class="btn btn-patreon" title="Patreon - support and request novels for translation">
+        <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M15.4 2.5a7.8 7.8 0 1 0 0 15.6 7.8 7.8 0 0 0 0-15.6z"/><path d="M2 21.5V2.5h4v19z"/></svg>
+        <span class="btn-label">Patreon</span>
+      </a>
+      <button class="btn btn-ghost" id="dmcaBtn" title="DMCA copyright notice">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        <span class="btn-label">DMCA</span>
+      </button>
+      <a href="/logout" class="btn btn-danger-ghost" title="Log out">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
+        <span class="btn-label">Logout</span>
+      </a>
+    </div>
+  </div>
+</header>
+
+<main class="container">
+
+  <div class="toolbar">
+    <div class="seg" id="myListSeg" role="tablist" aria-label="My list filter">
+      <button data-val="all" class="active">All library</button>
+      <button data-val="any">Saved</button>
+      <button data-val="want_to_read">Want to read</button>
+      <button data-val="reading">Reading</button>
+      <button data-val="finished">Finished</button>
+    </div>
+    <div class="toolbar-right">
+      <select id="sortBy" class="select" aria-label="Sort by">
+        <option value="views">Most viewed</option>
+        <option value="likes">Most liked</option>
+        <option value="chapters">Chapter count</option>
+        <option value="upload_date">Recently translated</option>
+      </select>
+      <button class="btn btn-icon" id="sortOrderBtn" title="Descending - click to flip" aria-label="Sort direction: descending"></button>
+      <button class="btn" id="selectModeBtn" title="Select multiple novels to remove" style="display:none;" aria-pressed="false">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        <span class="btn-label">Select</span>
+      </button>
+      <button class="btn" id="manageCollectionsBtn" title="Create, browse and share collections">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        <span class="btn-label">Collections</span>
+      </button>
+      <button class="btn filter-toggle" id="filterToggle" aria-expanded="false" aria-controls="filterPanel">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3"/><path d="M2 14h4M10 8h4M18 16h4"/></svg>
+        <span class="btn-label">Filters</span>
+        <span class="count" id="filterCount" hidden>0</span>
+      </button>
+    </div>
+  </div>
+
+  <div id="filterScrim"></div>
+  <section class="filter-panel" id="filterPanel" aria-label="Filters">
+    <div class="filter-grid">
+      <div class="field">
+        <label for="filterTranslatedChapter">Translated Chapter</label>
+        <select id="filterTranslatedChapter" class="select">
+          <option value="all">All</option>
+          <option value="translated">Translated Only</option>
+          <option value="raw">Raw Only</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="filterUploadSource">Library source</label>
+        <select id="filterUploadSource" class="select">
+          <option value="all">All sources</option>
+          <option value="official">Official Library</option>
+          <option value="updated">Updated</option>
+          <option value="uploaded">User Uploaded</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="filterAudience">Audience</label>
+        <select id="filterAudience" class="select">
+          <option value="all">All</option>
+          <option value="non_adult">General / Non-adult</option>
+          <option value="adult">Adult only (19+)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="filterStatus">Publication status</label>
+        <select id="filterStatus" class="select">
+          <option value="all">All</option>
+          <option value="ongoing">Ongoing</option>
+          <option value="complete">Complete</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="filterAuthor">Author</label>
+        <input type="text" id="filterAuthor" class="input" placeholder="Search author..." list="authorList" autocomplete="off">
+        <datalist id="authorList"></datalist>
+      </div>
+      <div class="field">
+        <label>Chapters</label>
+        <div class="range-pair">
+          <input type="number" id="minChapters" class="input" placeholder="Min" min="0" aria-label="Minimum chapters">
+          <input type="number" id="maxChapters" class="input" placeholder="Max" min="0" aria-label="Maximum chapters">
+        </div>
+      </div>
+    </div>
+    <div class="tags-block">
+      <div class="tags-head">
+        <div class="seg" id="tagMatchSeg" role="tablist" aria-label="How to match included tags">
+          <button data-val="and" class="active">AND</button>
+          <button data-val="or">OR</button>
+        </div>
+        <input type="text" id="tagSearch" class="input tag-search" placeholder="Search tags..." autocomplete="off">
+        <div class="legend">
+          <span><i style="background: var(--accent);"></i>Include</span>
+          <span><i style="background: var(--red);"></i>Exclude (hides any)</span>
+          <span style="opacity:.8;">Click a tag to cycle: off &rarr; include &rarr; exclude</span>
+        </div>
+      </div>
+      <div class="tag-cloud" id="tagCloud"><span style="color: var(--text-3); font-size: 13px;">Loading tags...</span></div>
+    </div>
+    <div class="filter-foot">
+      <button class="btn btn-ghost" id="resetFiltersBtn">Reset all filters</button>
+      <button class="btn btn-primary" id="closeFiltersBtn">Done</button>
+    </div>
+  </section>
+
+  <div class="chips" id="activeChips"></div>
+
+  <div class="bulk-bar" id="bulkBar">
+    <span class="bulk-count" id="bulkCount">0 selected</span>
+    <button class="btn" id="bulkSelectPageBtn">Select all on page</button>
+    <button class="btn" id="bulkClearBtn">Clear</button>
+    <button class="btn btn-danger" id="bulkRemoveBtn" disabled>Remove</button>
+  </div>
+
+  <section id="shelves" style="display:none;" aria-label="Personalised shelves">
+    <div class="shelf" id="shelfContinue" style="display:none;">
+      <div class="shelf-top">
+        <h2 class="shelf-head">Continue reading</h2>
+        <button class="see-all" id="continueSeeAll" type="button">View all &rarr;</button>
+      </div>
+      <div class="sim-rail" id="continueRail"></div>
+    </div>
+    <div class="shelf" id="shelfRecs" style="display:none;">
+      <div class="shelf-top">
+        <h2 class="shelf-head" id="recsHead">Recommended for you</h2>
+      </div>
+      <div class="sim-rail" id="recsRail"></div>
+    </div>
+    <div class="shelf" id="shelfBecause" style="display:none;">
+      <div class="shelf-top">
+        <h2 class="shelf-head" id="becauseHead">Because you read&hellip;</h2>
+      </div>
+      <div class="sim-rail" id="becauseRail"></div>
+    </div>
+    <div class="shelf" id="shelfTrending" style="display:none;">
+      <div class="shelf-top">
+        <h2 class="shelf-head">Trending this week</h2>
+      </div>
+      <div class="sim-rail" id="trendingRail"></div>
+    </div>
+  </section>
+
+  <div class="lib-head">
+    <h2 class="shelf-head" id="libTitle">Library</h2>
+    <div class="lib-tools">
+      <div class="results-meta" id="resultsMeta"><strong>Connecting&hellip;</strong></div>
+      <select id="pageSizeSeg" class="pagesize-sel" aria-label="Novels per page" title="Novels per page">
+        <option value="30">30 / page</option>
+        <option value="60">60 / page</option>
+        <option value="100">100 / page</option>
+      </select>
+      <div class="seg" id="viewSeg" role="tablist" aria-label="View mode">
+        <button data-val="list" class="active" title="List view" aria-label="List view">
+          <svg viewBox="0 0 24 24"><rect x="3" y="4" width="6" height="7" rx="1"/><path d="M12 6h9M12 9h6"/><rect x="3" y="14" width="6" height="7" rx="1"/><path d="M12 16h9M12 19h6"/></svg>
+        </button>
+        <button data-val="grid" title="Grid view" aria-label="Grid view">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid" id="novelGrid"></div>
+  <nav class="pagination" id="paginationControls" aria-label="Pagination"></nav>
+</main>
+
+<div class="modal-overlay" id="detailModal">
+  <div class="modal detail" role="dialog" aria-modal="true" aria-labelledby="detailTitle">
+    <button class="detail-close" id="detailCloseBtn" aria-label="Close details">&times;</button>
+    <div id="detailContent"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="collectionsModal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="collectionsTitle">
+    <div class="modal-head"><h2 id="collectionsTitle">Your collections</h2><button class="modal-close" data-close="collectionsModal" aria-label="Close">&times;</button></div>
+    <div class="modal-body">
+      <div class="coll-create-row">
+        <input type="text" id="newCollectionName" class="form-control" placeholder="New collection name..." maxlength="60" autocomplete="off">
+        <button class="btn btn-primary" id="createCollectionBtn" style="flex:0 0 auto;">Create</button>
+      </div>
+      <div class="coll-list" id="collList"></div>
+    </div>
+    <div class="modal-foot"><button class="btn" data-close="collectionsModal">Done</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="assignModal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="assignTitle">
+    <div class="modal-head"><h2 id="assignTitle">Add to collection</h2><button class="modal-close" data-close="assignModal" aria-label="Close">&times;</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="assignNovelId">
+      <div class="assign-list" id="assignList"></div>
+      <div class="coll-empty" id="assignEmpty" style="display:none;">No collections yet. Close this and use the <b>Collections</b> button to create one.</div>
+    </div>
+    <div class="modal-foot"><button class="btn" data-close="assignModal">Done</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="shareModal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="shareTitle">
+    <div class="modal-head"><h2 id="shareTitle">Share to community</h2><button class="modal-close" data-close="shareModal" aria-label="Close">&times;</button></div>
+    <div class="modal-body">
+      <p class="donate-intro" style="margin-bottom:14px;">You are sharing <b id="shareTarget"></b> with everyone in the community space.</p>
+      <div class="form-group">
+        <label for="shareMessage">Message <span style="text-transform:none;font-weight:400;">(optional, why do you recommend it?)</span></label>
+        <textarea id="shareMessage" class="form-control" rows="3" maxlength="300"></textarea>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" data-close="shareModal">Cancel</button>
+      <button class="btn btn-primary" id="shareSubmitBtn">Share</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="uploadModal">
+  <div class="modal" style="max-width:700px;" role="dialog" aria-modal="true" aria-labelledby="uploadTitle">
+    <div class="modal-head">
+      <h2 id="uploadTitle">Upload a novel</h2>
+      <button type="button" class="modal-close" data-close="uploadModal" aria-label="Close">&times;</button>
+    </div>
+    <form id="uploadForm">
+      <div class="modal-body">
+        <div class="upload-grid">
+          <div class="form-group">
+            <label for="uploadRawTitle">Raw/original title</label>
+            <input type="text" id="uploadRawTitle" name="raw_title" class="form-control" maxlength="300" placeholder="Original Korean, Japanese or Chinese title">
+          </div>
+          <div class="form-group">
+            <label for="uploadEnglishTitle">English title</label>
+            <input type="text" id="uploadEnglishTitle" name="title_en" class="form-control" maxlength="300" required placeholder="English novel title">
+          </div>
+          <div class="form-group full">
+            <label for="uploadAuthor">Author</label>
+            <input type="text" id="uploadAuthor" name="author" class="form-control" maxlength="200" placeholder="Author name">
+          </div>
+          <div class="form-group full">
+            <label for="uploadDescription">Description</label>
+            <textarea id="uploadDescription" name="description" class="form-control" rows="6" maxlength="20000" placeholder="Novel synopsis or description"></textarea>
+          </div>
+          <div class="form-group full" style="position:relative;">
+            <label for="uploadTagsInput">Tags</label>
+            <div class="tag-chip-input-container" id="tagChipInputContainer">
+              <div class="tag-chips-wrapper" id="tagChipsWrapper"></div>
+              <input type="text" id="uploadTagsInput" class="tag-inline-input" placeholder="Type or select tags from dropdown…" autocomplete="off">
+              <input type="hidden" id="uploadTags" name="tags">
+            </div>
+            <div class="tag-dropdown-menu" id="tagDropdownMenu"></div>
+            <p class="upload-help">Click suggestions from the dropdown or type and press Enter/Comma to add tags.</p>
+          </div>
+          <div class="form-group full">
+            <label for="uploadCover">Cover photo</label>
+            <input type="file" id="uploadCover" name="cover" class="form-control upload-file" accept="image/jpeg,image/png,image/gif,image/webp">
+            <p class="upload-help">Optional. JPEG, PNG, GIF or WebP. Maximum 8 MB.</p>
+          </div>
+          <div class="form-group">
+            <label for="uploadRawEpub">Raw EPUB</label>
+            <input type="file" id="uploadRawEpub" name="raw_epub" class="form-control upload-file" accept=".epub,application/epub+zip">
+            <p class="upload-help">Optional when a translated EPUB is provided.</p>
+          </div>
+          <div class="form-group">
+            <label for="uploadTranslatedEpub">Translated EPUB</label>
+            <input type="file" id="uploadTranslatedEpub" name="translated_epub" class="form-control upload-file" accept=".epub,application/epub+zip">
+            <p class="upload-help">Used for online reading when both files are supplied.</p>
+          </div>
+        </div>
+        <p class="upload-help" style="margin-top: 12px;">
+          You must provide at least one EPUB. Uploaded novels become visible to all approved users.
+        </p>
+        <div class="upload-progress" id="uploadProgress">
+          Uploading and extracting the EPUB. Do not close this window.
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn" data-close="uploadModal">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="uploadSubmitBtn">Upload novel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-overlay" id="downloadProgressModal" style="z-index: 1250;">
+  <div class="modal" style="max-width:440px; text-align:center; padding: 28px 24px;" role="dialog" aria-modal="true" aria-labelledby="downloadModalTitle">
+    <div class="dl-spinner"></div>
+    <h3 id="downloadModalTitle" style="margin: 0 0 8px; font-size: 18px; font-weight: 750; letter-spacing: -0.3px;">Packaging EPUB</h3>
+    <p id="downloadModalStatus" style="margin: 0 0 16px; font-size: 13.5px; color: var(--text-2); line-height: 1.5;">Preparing download…</p>
+    <div class="progress-bar-track">
+      <div class="progress-bar-fill" id="downloadModalBar"></div>
+    </div>
+    <p id="downloadModalDetail" style="margin: 0; font-size: 12px; color: var(--text-3);">Fetching illustrations directly to your device</p>
+  </div>
+</div>
+
+<div class="modal-overlay" id="donateModal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="donateTitle">
+    <div class="modal-head"><h2 id="donateTitle">Support ArchiveDB</h2><button class="modal-close" data-close="donateModal" aria-label="Close">&times;</button></div>
+    <div class="modal-body">
+      <div class="patreon-card">
+        <div class="patreon-card-head">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 2.5a7.8 7.8 0 1 0 0 15.6 7.8 7.8 0 0 0 0-15.6z"/><path d="M2 21.5V2.5h4v19z"/></svg>
+          <h3>Become a Patron</h3>
+        </div>
+        <ul class="patreon-perks">
+          <li><svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg><span><b>Request novels for translation</b> — patrons get to pick what enters the queue next.</span></li>
+          <li><svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg><span>Directly funds servers, bandwidth and the translation pipeline.</span></li>
+          <li><svg viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg><span>Monthly support means the library keeps growing, ad-free and free to read.</span></li>
+        </ul>
+        <a href="https://www.patreon.com/cw/sigma6196/membership" target="_blank" rel="noopener noreferrer" class="btn-patreon-cta">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 2.5a7.8 7.8 0 1 0 0 15.6 7.8 7.8 0 0 0 0-15.6z"/><path d="M2 21.5V2.5h4v19z"/></svg>
+          View membership tiers
+        </a>
+      </div>
+      <p class="donate-or">or send crypto</p>
+
+      <p class="donate-intro">ArchiveDB is a passion project kept alive by readers like you. It has no ads, no paywalls, and no trackers &mdash; just books. Donations go straight back into keeping it running and growing.</p>
+      <ul class="donate-costs">
+        <li><svg viewBox="0 0 24 24"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><path d="M6 6h.01M6 18h.01"/></svg> Server &amp; hosting</li>
+        <li><svg viewBox="0 0 24 24"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><path d="M12 20h.01"/></svg> Bandwidth / traffic</li>
+        <li><svg viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg> EPUB storage &amp; backups</li>
+        <li><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg> Domain &amp; SSL</li>
+      </ul>
+      <p class="donate-intro" style="margin-bottom:16px;">Even a couple of dollars genuinely helps. Pick any coin below and hit <b>Copy</b>. Thank you for keeping the library free.</p>
+      <div class="donate-list">
+
+        <div class="donate-row">
+          <div class="donate-row-head">
+            <span class="donate-coin-icon coin-btc">₿</span>
+            <span class="donate-coin-name">Bitcoin</span>
+            <span class="donate-coin-net">BTC &middot; Bitcoin</span>
+          </div>
+          <div class="donate-addr-row">
+            <code class="donate-addr">bc1qsuh3kn7xucheanjmkkxjtkcmp3h5r58vq2hcel</code>
+            <button class="btn copy-btn" data-copy="bc1qsuh3kn7xucheanjmkkxjtkcmp3h5r58vq2hcel">Copy</button>
+          </div>
+        </div>
+
+        <div class="donate-row">
+          <div class="donate-row-head">
+            <span class="donate-coin-icon coin-eth">Ξ</span>
+            <span class="donate-coin-name">Ethereum</span>
+            <span class="donate-coin-net">ETH &middot; ERC-20</span>
+          </div>
+          <div class="donate-addr-row">
+            <code class="donate-addr">0x7427f0026d1D23c18b082CCd865Feca9CC39545A</code>
+            <button class="btn copy-btn" data-copy="0x7427f0026d1d23c18b082ccd865feca9cc39545a">Copy</button>
+          </div>
+        </div>
+
+        <div class="donate-row">
+          <div class="donate-row-head">
+            <span class="donate-coin-icon coin-usdt">₮</span>
+            <span class="donate-coin-name">Tether</span>
+            <span class="donate-coin-net">USDT &middot; BEP-20 (BNB Smart Chain)</span>
+          </div>
+          <div class="donate-addr-row">
+            <code class="donate-addr">0x7427f0026d1D23c18b082CCd865Feca9CC39545A</code>
+            <button class="btn copy-btn" data-copy="0x7427f0026d1D23c18b082CCd865Feca9CC39545A">Copy</button>
+          </div>
+        </div>
+
+        <div class="donate-row">
+          <div class="donate-row-head">
+            <span class="donate-coin-icon coin-usdc">$</span>
+            <span class="donate-coin-name">USD Coin</span>
+            <span class="donate-coin-net">USDC &middot; BEP-20 (BNB Smart Chain)</span>
+          </div>
+          <div class="donate-addr-row">
+            <code class="donate-addr">0x7427f0026d1D23c18b082CCd865Feca9CC39545A</code>
+            <button class="btn copy-btn" data-copy="0x7427f0026d1D23c18b082CCd865Feca9CC39545A">Copy</button>
+          </div>
+        </div>
+
+      </div>
+      <p class="donate-note">Important: send each coin only on its listed network: <b>BTC</b> on Bitcoin, <b>ETH</b> on Ethereum (ERC-20), and <b>USDT &amp; USDC</b> on <b>BNB Smart Chain (BEP-20)</b>. Sending on the wrong chain may result in permanently lost funds.</p>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" data-close="donateModal">Close</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="dmcaModal">
+  <div class="modal" style="max-width: 620px;" role="dialog" aria-modal="true" aria-labelledby="dmcaTitle">
+    <div class="modal-head"><h2 id="dmcaTitle">DMCA Copyright Infringement</h2><button class="modal-close" data-close="dmcaModal" aria-label="Close">&times;</button></div>
+    <div class="modal-body dmca-text">
+      <p>ArchiveDB respects the intellectual property of others. If you believe that your copyrighted work has been copied in a way that constitutes copyright infringement and is accessible on this site, you may notify our copyright agent, as set forth in the Digital Millennium Copyright Act of 1998 (DMCA).</p>
+      <p>To file a copyright infringement notification, please send a written communication that includes the following information:</p>
+      <ol>
+        <li>A physical or electronic signature of a person authorized to act on behalf of the owner of an exclusive right that is allegedly infringed.</li>
+        <li>Identification of the copyrighted work claimed to have been infringed.</li>
+        <li>Identification of the material that is claimed to be infringing or to be the subject of infringing activity and that is to be removed or access to which is to be disabled, and information reasonably sufficient to permit us to locate the material.</li>
+        <li>Information reasonably sufficient to permit us to contact the complaining party, such as an address, telephone number, and, if available, an electronic mail address at which the complaining party may be contacted.</li>
+        <li>A statement that the complaining party has a good faith belief that use of the material in the manner complained of is not authorized by the copyright owner, its agent, or the law.</li>
+        <li>A statement that the information in the notification is accurate, and under penalty of perjury, that the complaining party is authorized to act on behalf of the owner of an exclusive right that is allegedly infringed.</li>
+      </ol>
+      <p>Please send all DMCA notices to our designated agent at:</p>
+      <p><a href="mailto:{{ dmca_email or 'dmca@example.invalid' }}">{{ dmca_email or 'dmca@example.invalid' }}</a></p>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" data-close="dmcaModal">Close</button>
+      <a href="mailto:{{ dmca_email or 'dmca@example.invalid' }}?subject=DMCA Takedown Request" class="btn btn-primary">Send DMCA report</a>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="editModal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="editTitle">
+    <div class="modal-head"><h2 id="editTitle">Edit metadata</h2><button class="modal-close" data-close="editModal" aria-label="Close">&times;</button></div>
+    <div class="modal-body">
+      <input type="hidden" id="editFilename">
+      <div class="form-group"><label for="editTitleEn">English title</label><input type="text" id="editTitleEn" class="form-control"></div>
+      <div class="form-group"><label for="editTitleKr">Korean title</label><input type="text" id="editTitleKr" class="form-control"></div>
+      <div class="form-group"><label for="editCover">Cover image URL <span style="text-transform: none; font-weight: 400;">(optional, http/https)</span></label><input type="text" id="editCover" class="form-control" placeholder="https://..."></div>
+      <div class="form-group"><label for="editAuthor">Author</label><input type="text" id="editAuthor" class="form-control"></div>
+      <div class="form-group"><label for="editTags">Tags <span style="text-transform: none; font-weight: 400;">(comma separated)</span></label><input type="text" id="editTags" class="form-control" placeholder="Harem, Fantasy, Modern"></div>
+      <div class="form-group"><label for="editSynopsis">Synopsis</label><textarea id="editSynopsis" class="form-control" rows="5"></textarea></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" data-close="editModal">Cancel</button>
+      <button class="btn btn-primary" id="saveBtn">Save changes</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="welcomeModal">
+  <div class="modal welcome" role="dialog" aria-modal="true" aria-labelledby="welcomeTitle">
+    <div class="welcome-hero">
+      <div class="welcome-mark">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      </div>
+      <h2 id="welcomeTitle">Welcome to Archive<span>DB</span></h2>
+      <p>Two quick things before you dive into the library — one of them will save you from losing access later.</p>
+    </div>
+
+    <div class="welcome-body">
+      <div class="wcard wcard-discord">
+        <div class="wcard-icon">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.32 4.37A19.79 19.79 0 0 0 15.89 3c-.22.39-.44.83-.63 1.29a18.3 18.3 0 0 0-5.51 0C9.55 3.83 9.33 3.39 9.11 3a19.74 19.74 0 0 0-4.43 1.37C1.9 8.51 1.14 12.55 1.52 16.53a19.9 19.9 0 0 0 6.02 3.04c.48-.66.91-1.36 1.28-2.09-.7-.26-1.37-.58-2-.96.17-.12.33-.25.49-.38a14.2 14.2 0 0 0 12.38 0c.16.14.32.26.49.38-.64.38-1.31.7-2.01.96.37.73.8 1.43 1.28 2.09a19.86 19.86 0 0 0 6.03-3.04c.44-4.6-.75-8.6-3.16-12.16zM8.68 14.08c-1.18 0-2.16-1.08-2.16-2.41 0-1.33.95-2.42 2.16-2.42 1.21 0 2.18 1.09 2.16 2.42 0 1.33-.96 2.41-2.16 2.41zm6.64 0c-1.18 0-2.16-1.08-2.16-2.41 0-1.33.95-2.42 2.16-2.42 1.21 0 2.18 1.09 2.16 2.42 0 1.33-.95 2.41-2.16 2.41z"/></svg>
+        </div>
+        <div class="wcard-text">
+          <h3>Join the Discord <span class="wcard-tag must">Important</span></h3>
+          <p>This site's address <b>will change in the future</b>. When it moves, the new link is posted on Discord first — it's the only place you're guaranteed to find the working mirror. Announcements, new translations and support all live there too.</p>
+          <a href="https://discord.gg/xDqbcEENE2" target="_blank" rel="noopener noreferrer" class="wcard-cta">Join the server &rarr;</a>
+        </div>
+      </div>
+
+      <div class="wcard wcard-patreon">
+        <div class="wcard-icon">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.4 2.5a7.8 7.8 0 1 0 0 15.6 7.8 7.8 0 0 0 0-15.6z"/><path d="M2 21.5V2.5h4v19z"/></svg>
+        </div>
+        <div class="wcard-text">
+          <h3>Support on Patreon <span class="wcard-tag opt">Optional</span></h3>
+          <p>ArchiveDB has no ads, no paywalls and no trackers. Patrons keep the servers and the translation pipeline running — and get something back:</p>
+          <ul>
+            <li><b>Request novels for translation</b> and shape the queue.</li>
+            <li>Faster turnaround on the titles you care about.</li>
+          </ul>
+          <a href="https://www.patreon.com/cw/sigma6196/membership" target="_blank" rel="noopener noreferrer" class="wcard-cta">See the tiers &rarr;</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="welcome-foot">
+      <p class="welcome-note">Shown once. You'll always find both links in the top bar.</p>
+      <button class="btn btn-primary" id="welcomeDismissBtn">Start reading</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-stack" id="toastStack" aria-live="polite"></div>
+
+<script>
+'use strict';
+
+/* ===================== State ===================== */
+const state = {
+  page: 1,
+  search: '',
+  includes: new Set(),
+  excludes: new Set(),
+  readingStatus: 'all',
+  tagMatch: 'and',
+  collection: 'all',
+};
+let rawNovelsData = [];
+let globalUserData = {};
+let totalPagesCache = 1;
+let searchTimeout = null;
+let lastRandomId = '';
+let selectionMode = false;
+let selectedKeys = new Set();
+let originalSearchTerm = '';
+let showCovers = localStorage.getItem('archive_show_covers') !== 'false';
+let viewMode = localStorage.getItem('archive_view_mode') === 'grid' ? 'grid' : 'list';
+const PAGE_SIZES = [30, 60, 100];
+let pageSize = PAGE_SIZES.includes(+localStorage.getItem('archive_page_size'))
+  ? +localStorage.getItem('archive_page_size') : 30;
+let sortDesc = true;
+let tagsReady = false;
+
+const FALLBACK_COVER = 'data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22300%22%20height%3D%22360%22%3E%3Crect%20width%3D%22100%25%22%20height%3D%22100%25%22%20fill%3D%22%23161a23%22%2F%3E%3Ctext%20x%3D%2250%25%22%20y%3D%2250%25%22%20font-family%3D%22sans-serif%22%20font-weight%3D%22bold%22%20font-size%3D%2218%22%20fill%3D%22%236d7589%22%20dominant-baseline%3D%22middle%22%20text-anchor%3D%22middle%22%3ENo%20Cover%3C%2Ftext%3E%3C%2Fsvg%3E';
+const BLANK_GIF = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+const LEGACY_DATE = '2024-01-01';
+const STATUS_NAMES = { want_to_read: 'Want to read', reading: 'Reading', finished: 'Finished' };
+const ICONS = {
+  views: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>',
+  likes: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21C6.4 16.3 2.5 12.8 2.5 8.9 2.5 6.1 4.6 4 7.3 4c1.6 0 3.2.8 4.7 2.4C13.5 4.8 15.1 4 16.7 4c2.7 0 4.8 2.1 4.8 4.9 0 3.9-3.9 7.4-9.5 12.1z"/></svg>',
+  chapters: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>',
+  date: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
+  folder: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>',
+  trash: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg>',
+  check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 13l4 4L19 7"/></svg>',
+  download: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>',
+  play: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3"/></svg>',
+  share: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>',
+  pencil: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>',
+  gem: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12l4 6-10 12L2 9z"/><path d="M2 9h20M12 21L8 9l4-6 4 6-4 12"/></svg>',
+  search: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>',
+  alert: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>',
+};
+
+/* ===================== Helpers ===================== */
+const $ = (id) => document.getElementById(id);
+
+function esc(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function toast(message, type = '') {
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = message;
+  $('toastStack').appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; setTimeout(() => el.remove(), 320); }, 3000);
+}
+
+function toastAction(message, label, fn) {
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = message;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'toast-btn';
+  btn.textContent = label;
+  btn.onclick = () => { el.remove(); fn(); };
+  el.appendChild(btn);
+  $('toastStack').appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; setTimeout(() => el.remove(), 320); }, 6000);
+}
+
+async function api(path, payload) {
+  const res = await fetch(path, payload === undefined ? undefined : {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+  });
+  let data = null;
+  try { data = await res.json(); } catch (_) { }
+
+  if (res.status === 429) {
+    const msg = (data && data.error) || 'You are loading too fast \u2014 please slow down.';
+    toast(msg, 'error');
+    const err = new Error(msg);
+    err.code = 429;
+    throw err;
+  }
+
+  if (!res.ok) throw new Error((data && data.error) || `Request failed (${res.status})`);
+  return data;
+}
+
+/* ===================== Clipboard ===================== */
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.top = '-9999px';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+    }
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+/* ===================== Payload ===================== */
+function buildPayload(isRandom = false) {
+  return {
+    page: state.page,
+    limit: pageSize,
+    search: $('searchInput').value.trim(),
+    sortBy: $('sortBy').value,
+    sortOrder: sortDesc ? 'desc' : 'asc',
+    includes: Array.from(state.includes),
+    excludes: Array.from(state.excludes),
+    readingStatus: state.readingStatus,
+    translatedChapter: $('filterTranslatedChapter').value,
+    uploadSource: $('filterUploadSource') ? $('filterUploadSource').value : 'all',
+    tagMatch: state.tagMatch,
+    collection: state.collection,
+    audience: $('filterAudience').value,
+    status: $('filterStatus').value,
+    minChapters: $('minChapters').value,
+    maxChapters: $('maxChapters').value,
+    author: $('filterAuthor').value,
+    random: isRandom,
+  };
+}
+
+/* ===================== Fetch & render ===================== */
+function renderSkeletons() {
+  let html = '';
+  for (let i = 0; i < 6; i++) {
+    html += `<div class="sk-card" aria-hidden="true"><div class="sk sk-cover"></div><div class="sk-body"><div class="sk sk-line" style="width:70%"></div><div class="sk sk-line short"></div><div class="sk sk-line"></div><div class="sk sk-line" style="width:85%"></div></div></div>`;
+  }
+  $('novelGrid').innerHTML = html;
+  $('paginationControls').innerHTML = '';
+}
+
+async function fetchPageData() {
+  renderSkeletons();
+  try {
+    const data = await api('/api/library', buildPayload());
+    rawNovelsData = data.novels;
+    globalUserData = data.userData || {};
+    totalPagesCache = data.totalPages;
+    renderApp(data.novels, data.total, data.totalPages);
+  } catch (err) {
+    $('resultsMeta').innerHTML = '<strong>Something went wrong</strong>';
+    $('novelGrid').innerHTML = `
+      <div class="state-panel">
+        <div class="state-icon">${ICONS.alert}</div>
+        <h3>Could not load the library</h3>
+        <p>${esc(err.message)}</p>
+        <button class="btn btn-primary" id="retryBtn">Try again</button>
+      </div>`;
+    const retry = $('retryBtn');
+    if (retry) retry.addEventListener('click', fetchPageData);
+  }
+}
+
+function resetAndFetch() { state.page = 1; fetchPageData(); }
+const delayFetch = () => { clearTimeout(searchTimeout); searchTimeout = setTimeout(resetAndFetch, 400); };
+
+function novelKey(novel) { return novel.id ? String(novel.id) : novel.filename; }
+
+function renderApp(novels, totalItems, totalPages) {
+  updateSelectModeAvailability();
+  updateBulkBar();
+  const showShelves = isDefaultView();
+  $('shelves').style.display = showShelves ? '' : 'none';
+  if (showShelves && (!shelvesLoaded || shelvesStale)) loadShelves();
+
+  if (!tagsReady && novels && novels.length) {
+    const derived = deriveTagCounts(novels);
+    if (Object.keys(derived).length) { setupTags(derived); tagsReady = true; }
+  }
+
+  updateChips();
+  updateFilterCount();
+  $('resultsMeta').innerHTML =
+    `<strong>${totalItems.toLocaleString()} novel${totalItems === 1 ? '' : 's'}</strong>` +
+    (totalPages > 1 ? `<span>page ${state.page} of ${totalPages}</span>` : '');
+
+  if (!novels.length) {
+    $('novelGrid').innerHTML = `
+      <div class="state-panel">
+        <div class="state-icon">${ICONS.search}</div>
+        <h3>No novels match your filters</h3>
+        <p>Try removing a filter or broadening your search.</p>
+        <button class="btn btn-primary" id="emptyResetBtn">Clear all filters</button>
+      </div>`;
+    const btn = $('emptyResetBtn');
+    if (btn) btn.addEventListener('click', resetAllFilters);
+    $('paginationControls').innerHTML = '';
+    return;
+  }
+
+  let html = '';
+  novels.forEach((novel) => { html += cardHTML(novel); });
+  $('novelGrid').innerHTML = html;
+
+  document.querySelectorAll('#novelGrid img.cover').forEach((img) => {
+    img.addEventListener('error', () => { if (img.src !== FALLBACK_COVER) img.src = FALLBACK_COVER; }, { once: true });
+  });
+  renderPagination(totalPages);
+}
+
+function cardHTML(novel) {
+  const key = novelKey(novel);
+  const user = globalUserData[key] || {};
+  const userStatus = user.status || 'none';
+  const userProgress = user.progress || 0;
+  const authorStr = (novel.author && novel.author !== 'Raw Upload') ? novel.author : 'Unknown';
+  const cover = (!novel.cover || novel.cover.includes('placeholder.com') || novel.cover === 'null') ? FALLBACK_COVER : novel.cover;
+  const viewsStr = (novel.views === '-' || !novel.views) ? '&ndash;' : Number(novel.views).toLocaleString();
+  const likesStr = (novel.likes === '-' || !novel.likes) ? '&ndash;' : Number(novel.likes).toLocaleString();
+  const dateStr = (novel.upload_date && novel.upload_date !== LEGACY_DATE) ? novel.upload_date.split(' ')[0] : 'Legacy';
+  const translatedMark = novel.has_download ? '<span class="translated-mark">Translated</span>' : '';
+
+  const totalChaps = novel.chapters > 0 ? novel.chapters : 1;
+  let progressPct = 0;
+  if (userStatus === 'finished') progressPct = 100;
+  else if (userStatus === 'reading' && userProgress > 0) progressPct = Math.min(100, Math.round((userProgress / totalChaps) * 100));
+
+  let isNew = false;
+  if (novel.upload_date && novel.upload_date !== LEGACY_DATE) {
+    isNew = (Date.now() - new Date(novel.upload_date.replace(' ', 'T')).getTime()) / 86400000 <= 3;
+  }
+  let miniBadges = '';
+  if (novel.is_updated) miniBadges += '<span class="mini-badge updated">Updated</span>';
+  if (novel.uploaded) miniBadges += '<span class="mini-badge uploaded">Uploaded</span>';
+  if (novel.complete === 1) miniBadges += '<span class="mini-badge complete">Complete</span>';
+  if (isNew) miniBadges += '<span class="mini-badge new">New</span>';
+
+  const tags = (novel.tags || []).filter((t) => t && t !== 'Unmatched');
+  const visibleTags = tags.slice(0, 4);
+  let tagsHtml = visibleTags.map((t) => `<span class="ctag" data-action="filter-tag" data-tag="${esc(t)}" role="button" tabindex="0" title="Filter by ${esc(t)}">${esc(t)}</span>`).join('');
+  if (tags.length > 4) tagsHtml += `<span class="ctag more">+${tags.length - 4}</span>`;
+
+  const synopsis = esc(String(novel.synopsis || '').replace(/\s+/g, ' ').trim());
+  const coverAttr = showCovers
+    ? `src="${esc(cover)}"`
+    : `data-src="${esc(cover)}" src="${BLANK_GIF}"`;
+  const pill = userStatus !== 'none'
+    ? `<span class="status-pill ${esc(userStatus)}">${STATUS_NAMES[userStatus] || ''}${userStatus === 'reading' && userProgress > 0 ? ` &middot; ch. ${userProgress + 1}` : ''}</span>` : '';
+
+  return `
+  <article class="card${selectionMode && selectedKeys.has(key) ? ' selected' : ''}" data-key="${esc(key)}" role="button" tabindex="0" aria-label="${esc(novel.title_en)} - open details">
+    <div class="cover-wrap">
+      <input type="checkbox" class="card-select" aria-label="Select ${esc(novel.title_en)}" ${selectedKeys.has(key) ? 'checked' : ''}>
+      <img ${coverAttr} class="cover lazy-cover" loading="lazy" alt="">
+      ${novel.age === 19 ? '<span class="badge badge-19">19</span>' : ''}
+      <div class="progress-rail"><div class="progress-fill" style="width:${progressPct}%;"></div></div>
+    </div>
+    <div class="card-main">
+      <h3 class="title-en">${esc(novel.title_en)}</h3>
+      ${novel.title_kr ? `<p class="title-kr">${esc(novel.title_kr)}</p>` : ''}
+      <p class="card-meta"><span class="author">by ${esc(authorStr)}</span>${miniBadges}</p>
+      ${tagsHtml ? `<div class="tag-row">${tagsHtml}</div>` : ''}
+      ${synopsis ? `<p class="card-syn">${synopsis}</p>` : ''}
+      <div class="card-foot">
+        <span class="stat" title="Views">${ICONS.views}${viewsStr}</span>
+        <span class="stat" title="Likes">${ICONS.likes}${likesStr}</span>
+        <span class="stat" title="Chapters">${ICONS.chapters}${esc(novel.chapters)} ch.</span>
+        <span class="stat stat-date" title="${novel.has_download ? 'Translated on' : 'Added on'}">${ICONS.date}${esc(dateStr)}${translatedMark}</span>
+        ${pill}
+      </div>
+    </div>
+  </article>`;
+}
+
+/* ===================== Pagination ===================== */
+function renderPagination(totalPages) {
+  const box = $('paginationControls');
+  if (totalPages <= 1) { box.innerHTML = ''; return; }
+  const cur = state.page;
+  let html = `<button class="page-btn" data-page="${cur - 1}" ${cur <= 1 ? 'disabled' : ''}>&larr; Prev</button>`;
+  const startP = Math.max(1, cur - 2), endP = Math.min(totalPages, cur + 2);
+  if (startP > 1) html += `<button class="page-btn" data-page="1">1</button><span class="page-ellipsis">&hellip;</span>`;
+  for (let i = startP; i <= endP; i++) html += `<button class="page-btn ${i === cur ? 'active' : ''}" data-page="${i}">${i}</button>`;
+  if (endP < totalPages) html += `<span class="page-ellipsis">&hellip;</span><button class="page-btn" data-page="${totalPages}">${totalPages}</button>`;
+  html += `<button class="page-btn" data-page="${cur + 1}" ${cur >= totalPages ? 'disabled' : ''}>Next &rarr;</button>`;
+  html += `<span class="page-jump"><input type="number" id="pageInput" class="page-input" placeholder="#" min="1" max="${totalPages}" aria-label="Jump to page"><button class="page-btn" id="pageGoBtn">Go</button></span>`;
+  box.innerHTML = html;
+}
+
+function goToPage(p) {
+  const page = Math.max(1, Math.min(totalPagesCache, p));
+  if (!page || page === state.page) return;
+  state.page = page;
+  fetchPageData();
+  window.scrollTo({ top: 0 });
+}
+
+/* ===================== Tags ===================== */
+function deriveTagCounts(novels) {
+  const counts = {};
+  (novels || []).forEach((n) => (n.tags || []).forEach((t) => {
+    if (t && t !== 'Unmatched') counts[t] = (counts[t] || 0) + 1;
+  }));
+  return counts;
+}
+
+let tagRenderToken = 0;
+function setupTags(tagCounts) {
+  const sorted = Object.keys(tagCounts).sort((a, b) => tagCounts[b] - tagCounts[a]);
+  const cloud = $('tagCloud');
+  cloud.innerHTML = '';
+  const myToken = ++tagRenderToken;
+  const CHUNK = 60;
+  let i = 0;
+  function renderChunk() {
+    if (myToken !== tagRenderToken) return;
+    const frag = document.createDocumentFragment();
+    const end = Math.min(i + CHUNK, sorted.length);
+    for (; i < end; i++) {
+      const tag = sorted[i];
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'ftag';
+      el.dataset.tag = tag;
+      el.textContent = `${tag} (${tagCounts[tag]})`;
+      frag.appendChild(el);
+    }
+    cloud.appendChild(frag);
+    syncTagCloud();
+    if (i < sorted.length) requestAnimationFrame(renderChunk);
+  }
+  renderChunk();
+}
+
+function loadTags(attempt = 1) {
+  api('/api/tags')
+    .then((tags) => {
+      if (tags && Object.keys(tags).length) {
+        tagsReady = true;
+        setupTags(tags);
+      } else if (attempt < 4) {
+        setTimeout(() => loadTags(attempt + 1), attempt * 800);
+      }
+    })
+    .catch(() => {
+      if (attempt < 4) {
+        setTimeout(() => loadTags(attempt + 1), attempt * 800);
+      } else if (!tagsReady) {
+        $('tagCloud').innerHTML = '<span style="color: var(--text-3); font-size: 13px;">Official tag list unavailable &mdash; showing tags from loaded novels.</span>';
+      }
+    });
+}
+
+function syncTagCloud() {
+  document.querySelectorAll('#tagCloud .ftag').forEach((el) => {
+    const t = el.dataset.tag;
+    el.classList.toggle('inc', state.includes.has(t));
+    el.classList.toggle('exc', state.excludes.has(t));
+  });
+}
+
+function cycleTag(tag) {
+  if (state.includes.has(tag)) { state.includes.delete(tag); state.excludes.add(tag); }
+  else if (state.excludes.has(tag)) { state.excludes.delete(tag); }
+  else { state.includes.add(tag); }
+  syncTagCloud();
+  resetAndFetch();
+}
+
+/* ===================== Collections ===================== */
+let userCollections = [];
+
+async function loadCollections() {
+  try {
+    const data = await api('/api/collections');
+    userCollections = data.collections || [];
+  } catch (_) {
+    userCollections = [];
+  }
+  if (state.collection !== 'all' && state.collection !== 'none'
+      && !userCollections.some((c) => c.id === state.collection)) {
+    state.collection = 'all';
+  }
+}
+
+function renderCollectionManager() {
+  const box = $('collList');
+  if (!userCollections.length) {
+    box.innerHTML = '<div class="coll-empty">No collections yet. Create your first one above.</div>';
+    return;
+  }
+  box.innerHTML = userCollections.map((c) => `
+    <div class="coll-item" data-id="${esc(c.id)}" data-name="${esc(c.name)}">
+      <button class="coll-name-btn" data-coll-action="view" title="Open this collection">${esc(c.name)}</button>
+      <span class="coll-count">${c.count} novel${c.count === 1 ? '' : 's'}</span>
+      <button class="icon-btn accent" data-coll-action="edit" title="Rename collection">${ICONS.pencil}</button>
+      <button class="icon-btn accent" data-coll-action="share" title="Share to community">${ICONS.share}</button>
+      <button class="icon-btn danger" data-coll-action="delete" title="Delete collection">${ICONS.trash}</button>
+    </div>`).join('');
+}
+
+async function createCollection() {
+  const input = $('newCollectionName');
+  const name = input.value.trim();
+  if (!name) { toast('Enter a collection name', 'error'); return; }
+  try {
+    await api('/api/collection_create', { name });
+    input.value = '';
+    toast('Collection created', 'success');
+    await loadCollections();
+    renderCollectionManager();
+  } catch (err) { toast(err.message, 'error'); }
+}
+
+async function renameCollection(id, name) {
+  const clean = name.trim();
+  if (!clean) { toast('Name cannot be empty', 'error'); renderCollectionManager(); return; }
+  try {
+    await api('/api/collection_rename', { id, name: clean });
+    toast('Renamed', 'success');
+    await loadCollections();
+    renderCollectionManager();
+  } catch (err) { toast(err.message, 'error'); renderCollectionManager(); }
+}
+
+function startRenameCollection(item) {
+  const nameBtn = item.querySelector('.coll-name-btn');
+  if (!nameBtn) return;
+  const original = item.dataset.name;
+  const input = document.createElement('input');
+  input.className = 'coll-name';
+  input.value = original;
+  input.maxLength = 60;
+  input.setAttribute('aria-label', 'Collection name');
+  nameBtn.replaceWith(input);
+  input.focus();
+  input.select();
+  let settled = false;
+  const commit = () => {
+    if (settled) return;
+    settled = true;
+    const value = input.value.trim();
+    if (!value || value === original) { renderCollectionManager(); return; }
+    renameCollection(item.dataset.id, value);
+  };
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); commit(); }
+    else if (e.key === 'Escape') {
+      e.stopPropagation();
+      settled = true;
+      renderCollectionManager();
+    }
+  });
+  input.addEventListener('blur', commit);
+}
+
+async function deleteCollection(id) {
+  const col = userCollections.find((c) => c.id === id);
+  if (!confirm(`Delete "${col ? col.name : 'this collection'}"? Your novels stay in the library \u2014 they're just removed from this collection.`)) return;
+  try {
+    await api('/api/collection_delete', { id });
+    toast('Collection deleted', 'success');
+    if (state.collection === id) state.collection = 'all';
+    await loadCollections();
+    renderCollectionManager();
+    resetAndFetch();
+  } catch (err) { toast(err.message, 'error'); }
+}
+
+function openAssignModal(key) {
+  $('assignNovelId').value = key;
+  const memberOf = new Set((globalUserData[key] || {}).collections || []);
+  const list = $('assignList');
+  const empty = $('assignEmpty');
+  if (!userCollections.length) {
+    list.innerHTML = '';
+    empty.style.display = 'block';
+  } else {
+    empty.style.display = 'none';
+    list.innerHTML = userCollections.map((c) => `
+      <label class="assign-row">
+        <input type="checkbox" data-coll-id="${esc(c.id)}" ${memberOf.has(c.id) ? 'checked' : ''}>
+        <span>${esc(c.name)}</span>
+        <span class="ac-count">${c.count}</span>
+      </label>`).join('');
+  }
+  openModal('assignModal');
+}
+
+async function toggleAssign(novelId, collId, add, checkboxEl) {
+  try {
+    const data = await api('/api/collection_assign', { id: novelId, collection: collId, add });
+    if (data.user_data) globalUserData = data.user_data;
+    loadCollections();
+    syncCardCollections(novelId);
+  } catch (err) {
+    toast(err.message, 'error');
+    if (checkboxEl) checkboxEl.checked = !add;
+  }
+}
+
+function syncCardCollections(key) {
+  const label = document.querySelector(`#detailContent button[data-action="collections"][data-key="${CSS.escape(key)}"] .coll-btn-label`);
+  if (label) {
+    const count = ((globalUserData[key] || {}).collections || []).length;
+    label.textContent = `Collections${count ? ` (${count})` : ''}`;
+  }
+}
+
+/* ===================== Active filter chips ===================== */
+function activeFilterDescriptors() {
+  const out = [];
+  const search = $('searchInput').value.trim();
+  if (search) out.push({ label: `Search: ${search}`, clear: () => { $('searchInput').value = ''; } });
+
+  if (state.collection !== 'all') {
+    const c = userCollections.find((x) => x.id === state.collection);
+    const label = state.collection === 'none' ? 'Unsorted' : (c ? c.name : 'Collection');
+    out.push({ label: `Collection: ${label}`, clear: () => { state.collection = 'all'; } });
+  }
+
+  if (state.readingStatus !== 'all') {
+    const names = { any: 'Saved', want_to_read: 'Want to read', reading: 'Reading', finished: 'Finished' };
+    out.push({ label: `List: ${names[state.readingStatus] || state.readingStatus}`, clear: () => setMyList('all', false) });
+  }
+
+  const trans = $('filterTranslatedChapter');
+  if (trans.value !== 'all') out.push({ label: `Chapters: ${trans.options[trans.selectedIndex].text}`, clear: () => { trans.value = 'all'; } });
+
+  const uploadSource = $('filterUploadSource');
+  if (uploadSource && uploadSource.value !== 'all') {
+    out.push({
+      label: `Source: ${uploadSource.options[uploadSource.selectedIndex].text}`,
+      clear: () => { uploadSource.value = 'all'; },
+    });
+  }
+
+  const aud = $('filterAudience');
+  if (aud.value !== 'all') out.push({ label: `Audience: ${aud.options[aud.selectedIndex].text}`, clear: () => { aud.value = 'all'; } });
+  const st = $('filterStatus');
+  if (st.value !== 'all') out.push({ label: `Status: ${st.options[st.selectedIndex].text}`, clear: () => { st.value = 'all'; } });
+  const author = $('filterAuthor').value.trim();
+  if (author) out.push({ label: `Author: ${author}`, clear: () => { $('filterAuthor').value = ''; } });
+  const minC = $('minChapters').value, maxC = $('maxChapters').value;
+  if (minC || maxC) out.push({ label: `Chapters: ${minC || 0}&ndash;${maxC || '&infin;'}`, clear: () => { $('minChapters').value = ''; $('maxChapters').value = ''; } });
+  state.includes.forEach((t) => out.push({ label: `+ ${t}`, cls: 'inc', clear: () => { state.includes.delete(t); syncTagCloud(); } }));
+  state.excludes.forEach((t) => out.push({ label: `&minus; ${t}`, cls: 'exc', clear: () => { state.excludes.delete(t); syncTagCloud(); } }));
+  return out;
+}
+
+let chipDescriptors = [];
+function updateChips() {
+  chipDescriptors = activeFilterDescriptors();
+  const box = $('activeChips');
+  if (!chipDescriptors.length) { box.classList.remove('visible'); box.innerHTML = ''; return; }
+  box.classList.add('visible');
+  box.innerHTML = chipDescriptors.map((d, i) =>
+    `<span class="chip ${d.cls || ''}">${d.label}<button data-chip="${i}" aria-label="Remove filter">&times;</button></span>`
+  ).join('') + '<button class="clear-all" id="clearAllChips">Clear all</button>';
+}
+
+function updateFilterCount() {
+  const n = chipDescriptors.filter((d) => !d.label.startsWith('Search:')).length;
+  const badge = $('filterCount');
+  badge.hidden = n === 0;
+  badge.textContent = n;
+}
+
+function resetAllFilters() {
+  $('searchInput').value = '';
+  $('filterTranslatedChapter').value = 'all';
+  if ($('filterUploadSource')) $('filterUploadSource').value = 'all';
+  $('filterAudience').value = 'all';
+  $('filterStatus').value = 'all';
+  $('filterAuthor').value = '';
+  $('minChapters').value = '';
+  $('maxChapters').value = '';
+  state.includes.clear();
+  state.excludes.clear();
+  state.tagMatch = 'and';
+  state.collection = 'all';
+  document.querySelectorAll('#tagMatchSeg button').forEach((b) => b.classList.toggle('active', b.dataset.val === 'and'));
+  setMyList('all', false);
+  syncTagCloud();
+  resetAndFetch();
+}
+
+/* ===================== My list segmented control ===================== */
+function setMyList(val, refetch = true) {
+  state.readingStatus = val;
+  document.querySelectorAll('#myListSeg button').forEach((b) => b.classList.toggle('active', b.dataset.val === val));
+  if (refetch) resetAndFetch();
+}
+
+/* ===================== Bulk selection ===================== */
+function isListContext() {
+  return state.readingStatus !== 'all' || (state.collection !== 'all' && state.collection !== 'none');
+}
+
+function currentBulkLabel() {
+  if (state.collection !== 'all' && state.collection !== 'none') {
+    const c = userCollections.find((x) => x.id === state.collection);
+    return c ? c.name : 'this collection';
+  }
+  const names = { any: 'Saved', want_to_read: 'Want to read', reading: 'Reading', finished: 'Finished' };
+  return names[state.readingStatus] || 'this list';
+}
+
+function updateSelectModeAvailability() {
+  const avail = isListContext();
+  $('selectModeBtn').style.display = avail ? '' : 'none';
+  if (!avail && selectionMode) exitSelectionMode();
+}
+
+function rerenderGridOnly() {
+  if (!rawNovelsData.length) return;
+  $('novelGrid').innerHTML = rawNovelsData.map(cardHTML).join('');
+  bindCoverFallbacks($('novelGrid'));
+}
+
+function toggleSelectionMode() {
+  selectionMode = !selectionMode;
+  if (!selectionMode) selectedKeys.clear();
+  document.body.classList.toggle('select-mode', selectionMode);
+  $('selectModeBtn').classList.toggle('active-toggle', selectionMode);
+  $('selectModeBtn').setAttribute('aria-pressed', String(selectionMode));
+  rerenderGridOnly();
+  updateBulkBar();
+}
+
+function exitSelectionMode() {
+  selectionMode = false;
+  selectedKeys.clear();
+  document.body.classList.remove('select-mode');
+  $('selectModeBtn').classList.remove('active-toggle');
+  $('selectModeBtn').setAttribute('aria-pressed', 'false');
+  updateBulkBar();
+}
+
+function toggleCardSelection(key) {
+  if (selectedKeys.has(key)) selectedKeys.delete(key);
+  else selectedKeys.add(key);
+  const card = document.querySelector(`#novelGrid .card[data-key="${CSS.escape(key)}"]`);
+  if (card) {
+    card.classList.toggle('selected', selectedKeys.has(key));
+    const cb = card.querySelector('.card-select');
+    if (cb) cb.checked = selectedKeys.has(key);
+  }
+  updateBulkBar();
+}
+
+function updateBulkBar() {
+  const bar = $('bulkBar');
+  bar.classList.toggle('visible', selectionMode);
+  $('bulkCount').textContent = `${selectedKeys.size} selected`;
+  $('bulkRemoveBtn').disabled = selectedKeys.size === 0;
+  $('bulkRemoveBtn').textContent = selectedKeys.size
+    ? `Remove from ${currentBulkLabel()} (${selectedKeys.size})`
+    : 'Remove';
+}
+
+function selectAllOnPage() {
+  document.querySelectorAll('#novelGrid .card[data-key]').forEach((card) => selectedKeys.add(card.dataset.key));
+  document.querySelectorAll('#novelGrid .card').forEach((card) => {
+    card.classList.add('selected');
+    const cb = card.querySelector('.card-select');
+    if (cb) cb.checked = true;
+  });
+  updateBulkBar();
+}
+
+async function performBulkRemove() {
+  if (!selectedKeys.size) return;
+  const label = currentBulkLabel();
+  const count = selectedKeys.size;
+  if (!confirm(`Remove ${count} novel${count === 1 ? '' : 's'} from ${label}?`)) return;
+  const payload = { ids: Array.from(selectedKeys) };
+  if (state.collection !== 'all' && state.collection !== 'none') payload.collection = state.collection;
+  const btn = $('bulkRemoveBtn');
+  btn.disabled = true;
+  try {
+    const data = await api('/api/bulk_remove', payload);
+    globalUserData = data.user_data;
+    toast(`Removed ${count} novel${count === 1 ? '' : 's'} from ${label}`, 'success');
+    selectedKeys.clear();
+    shelvesStale = true;
+    loadCollections();
+    state.page = 1;
+    await fetchPageData();
+  } catch (err) {
+    toast(`Could not remove: ${err.message}`, 'error');
+    btn.disabled = false;
+  }
+}
+
+/* ===================== Random pick ===================== */
+async function pickRandomNovel() {
+  const searchEl = $('searchInput');
+  if (searchEl.value !== lastRandomId) originalSearchTerm = searchEl.value;
+  searchEl.value = originalSearchTerm;
+  try {
+    const data = await api('/api/library', buildPayload(true));
+    if (data.random_id) {
+      lastRandomId = String(data.random_id);
+      searchEl.value = lastRandomId;
+      toast('Random pick - rolling the dice!');
+      resetAndFetch();
+    } else {
+      searchEl.value = originalSearchTerm;
+      toast('No novels match your current filters', 'error');
+    }
+  } catch (err) {
+    searchEl.value = originalSearchTerm;
+    toast(`Random pick failed: ${err.message}`, 'error');
+  }
+}
+
+/* ===================== User novel upload ===================== */
+async function submitNovelUpload(event) {
+  event.preventDefault();
+  const form = $('uploadForm');
+  const submitBtn = $('uploadSubmitBtn');
+  const progress = $('uploadProgress');
+  const rawFile = $('uploadRawEpub').files[0];
+  const translatedFile = $('uploadTranslatedEpub').files[0];
+  const englishTitle = $('uploadEnglishTitle').value.trim();
+
+  if (!englishTitle) {
+    toast('English title is required.', 'error');
+    $('uploadEnglishTitle').focus();
+    return;
+  }
+  if (!rawFile && !translatedFile) {
+    toast('Choose a raw EPUB, translated EPUB, or both.', 'error');
+    return;
+  }
+
+  const files = [
+    ['Raw EPUB', rawFile],
+    ['Translated EPUB', translatedFile],
+  ];
+  for (const [label, file] of files) {
+    if (!file) continue;
+    if (!file.name.toLowerCase().endsWith('.epub')) {
+      toast(`${label} must be an .epub file.`, 'error');
+      return;
+    }
+  }
+
+  const formData = new FormData(form);
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Uploading…';
+  progress.classList.add('visible');
+
+  try {
+    const response = await fetch('/api/upload_novel', {
+      method: 'POST',
+      body: formData,
+      credentials: 'same-origin',
+    });
+    let data = null;
+    try {
+      data = await response.json();
+    } catch (_) {
+      data = null;
+    }
+
+    if (response.status === 413) {
+      throw new Error('The combined upload is too large. Reduce the EPUB or cover size.');
+    }
+    if (response.status === 429) {
+      throw new Error((data && data.error) || 'Upload rate limit exceeded. Please wait and try again.');
+    }
+    if (!response.ok) {
+      throw new Error((data && data.error) || `Upload failed (${response.status}).`);
+    }
+
+    form.reset();
+    closeModal('uploadModal');
+    if (typeof tagsReady !== 'undefined') tagsReady = false;
+    if (typeof shelvesStale !== 'undefined') shelvesStale = true;
+    if (typeof state !== 'undefined') state.page = 1;
+
+    // Notifies the user that the upload was received and is pending admin approval
+    toast((data && data.message) || 'Novel submitted! It will appear in the library once approved by an admin.', 'success');
+
+    if (typeof loadTags === 'function') loadTags();
+    if (typeof fetchPageData === 'function') await fetchPageData();
+  } catch (err) {
+    toast(err.message || 'Upload failed.', 'error');
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = 'Upload novel';
+    progress.classList.remove('visible');
+  }
+}
+
+/* ===================== Sort direction toggle ===================== */
+const SORT_ICONS = {
+  desc: '<svg class="ico" viewBox="0 0 24 24"><path d="m3 16 4 4 4-4M7 20V4"/><path d="M11 4h10M11 8h7M11 12h4"/></svg>',
+  asc: '<svg class="ico" viewBox="0 0 24 24"><path d="m3 8 4-4 4 4M7 4v16"/><path d="M11 12h4M11 16h7M11 20h10"/></svg>',
+};
+
+function applySortOrder() {
+  const label = sortDesc ? 'Descending' : 'Ascending';
+  const btn = $('sortOrderBtn');
+  btn.innerHTML = SORT_ICONS[sortDesc ? 'desc' : 'asc'];
+  btn.title = `${label} - click to flip`;
+  btn.setAttribute('aria-label', `Sort direction: ${label}`);
+}
+
+/* ===================== View mode (list / grid) ===================== */
+function applyViewMode() {
+  document.body.classList.toggle('view-grid', viewMode === 'grid');
+  document.querySelectorAll('#viewSeg button').forEach((b) => b.classList.toggle('active', b.dataset.val === viewMode));
+}
+
+/* ===================== Page size ===================== */
+function applyPageSize() {
+  $('pageSizeSeg').value = String(pageSize);
+}
+
+/* ===================== Covers toggle ===================== */
+function applyCoverPreference() {
+  document.body.classList.toggle('hide-covers', !showCovers);
+  $('toggleCoverBtn').querySelector('.btn-label').textContent = showCovers ? 'Hide covers' : 'Show covers';
+  $('toggleCoverBtn').title = showCovers ? 'Hide covers' : 'Show covers';
+}
+
+function toggleCovers() {
+  showCovers = !showCovers;
+  localStorage.setItem('archive_show_covers', showCovers);
+  applyCoverPreference();
+  document.querySelectorAll('img.lazy-cover').forEach((img) => {
+    if (showCovers) {
+      if (img.dataset.src) { img.src = img.dataset.src; delete img.dataset.src; }
+    } else if (img.src && !img.src.startsWith('data:image/gif')) {
+      img.dataset.src = img.src;
+      img.src = BLANK_GIF;
+    }
+  });
+}
+
+/* ===================== Home shelves ===================== */
+let shelvesLoaded = false;
+let shelvesStale = false;
+const SIM_STEP = 12;
+const SIM_MAX_LIMIT = 150;
+let recsLimit = SIM_STEP;
+let becauseLimit = SIM_STEP;
+let trendingLimit = SIM_STEP * 2;
+
+function isDefaultView() {
+  return state.page === 1
+    && !$('searchInput').value.trim()
+    && !state.includes.size && !state.excludes.size
+    && state.readingStatus === 'all'
+    && state.collection === 'all'
+    && $('filterTranslatedChapter').value === 'all'
+    && ($('filterUploadSource') ? $('filterUploadSource').value === 'all' : true)
+    && $('filterAudience').value === 'all'
+    && $('filterStatus').value === 'all'
+    && !$('filterAuthor').value.trim()
+    && !$('minChapters').value && !$('maxChapters').value;
+}
+
+function shelfCoverOf(n) {
+  return (!n.cover || n.cover.includes('placeholder.com') || n.cover === 'null') ? FALLBACK_COVER : n.cover;
+}
+
+function simReasonHTML(n) {
+  if (n.reason === 'gem') return `<div class="sim-why gem">${ICONS.gem}Hidden gem</div>`;
+  if (n.reason === 'readers') return '<div class="sim-why">Readers also read</div>';
+  if (n.reason === 'author') return '<div class="sim-why">Same author</div>';
+  if (n.reason === 'trending' && n.readers) return `<div class="sim-why trend">${n.readers} readers this week</div>`;
+  if (n.shared_tags && n.shared_tags.length) return `<div class="sim-why" title="Shared tags">${esc(n.shared_tags.slice(0, 2).join(' · '))}</div>`;
+  return '';
+}
+
+function simCardHTML(n, dismissable) {
+  const key = novelKey(n);
+  const a = (n.author && n.author !== 'Raw Upload') ? n.author : 'Unknown';
+  const x = dismissable
+    ? `<button type="button" class="sim-x" data-action="dismiss" data-key="${esc(key)}" title="Not interested" aria-label="Not interested">&times;</button>`
+    : '';
+  return `<div class="sim-card" data-action="open-novel" data-key="${esc(key)}" role="button" tabindex="0">
+      ${x}
+      <img src="${esc(shelfCoverOf(n))}" loading="lazy" alt="">
+      <div class="sim-title">${esc(n.title_en)}</div>
+      <div class="sim-sub">${esc(a)}</div>
+      ${simReasonHTML(n)}
+    </div>`;
+}
+
+function moreTileHTML(action, key) {
+  return `<button type="button" class="sim-card sim-more" data-action="${action}"${key ? ` data-key="${esc(key)}"` : ''} aria-label="Show more">
+      <span class="plus">+</span><span>Show more</span>
+    </button>`;
+}
+
+function bindCoverFallbacks(container) {
+  container.querySelectorAll('img').forEach((img) => {
+    img.addEventListener('error', () => { if (img.src !== FALLBACK_COVER) img.src = FALLBACK_COVER; }, { once: true });
+  });
+}
+
+function renderContinueRail(res) {
+  const rail = $('continueRail');
+  const novels = (res && res.novels) || [];
+  const ud = (res && res.userData) || {};
+  if (!novels.length) { $('shelfContinue').style.display = 'none'; rail.innerHTML = ''; return; }
+  rail.innerHTML = novels.map((n) => {
+    const key = novelKey(n);
+    const prog = (ud[key] || {}).progress || 0;
+    const total = n.chapters > 0 ? n.chapters : 0;
+    const pct = total ? Math.min(100, Math.round((prog / total) * 100)) : 0;
+    const inner = `<img src="${esc(shelfCoverOf(n))}" loading="lazy" alt="">
+        <div class="sim-title">${esc(n.title_en)}</div>
+        <div class="sim-sub">ch. ${prog + 1}${total ? ` &middot; ${pct}%` : ''}</div>
+        <div class="sim-prog"><i style="width:${pct}%"></i></div>`;
+    return n.has_local_read
+      ? `<a class="sim-card" href="/read/${encodeURIComponent(key)}" target="_blank" rel="noopener" title="Resume reading">${inner}</a>`
+      : `<div class="sim-card" data-action="open-novel" data-key="${esc(key)}" role="button" tabindex="0">${inner}</div>`;
+  }).join('');
+  $('shelfContinue').style.display = '';
+}
+
+function renderRecsRail(res) {
+  const rail = $('recsRail');
+  const novels = (res && res.novels) || [];
+  if (!novels.length) { $('shelfRecs').style.display = 'none'; rail.innerHTML = ''; return; }
+  $('recsHead').textContent = res.basis === 'tags' ? 'Recommended for you' : 'Popular in the library';
+  const mayHaveMore = novels.length >= recsLimit && recsLimit < SIM_MAX_LIMIT;
+  rail.innerHTML = novels.map((n) => simCardHTML(n, true)).join('') + (mayHaveMore ? moreTileHTML('recs-more') : '');
+  bindCoverFallbacks(rail);
+  $('shelfRecs').style.display = '';
+}
+
+function renderBecauseRail(res) {
+  const rail = $('becauseRail');
+  const novels = (res && res.novels) || [];
+  if (!res || !res.seed || !novels.length) { $('shelfBecause').style.display = 'none'; rail.innerHTML = ''; return; }
+  $('becauseHead').textContent = `Because you read “${res.seed.title_en}”`;
+  const mayHaveMore = novels.length >= becauseLimit && becauseLimit < SIM_MAX_LIMIT;
+  rail.innerHTML = novels.map((n) => simCardHTML(n, true)).join('') + (mayHaveMore ? moreTileHTML('because-more') : '');
+  bindCoverFallbacks(rail);
+  $('shelfBecause').style.display = '';
+}
+
+async function loadMoreBecause(btn) {
+  btn.disabled = true;
+  const prevLimit = becauseLimit;
+  try {
+    becauseLimit = Math.min(SIM_MAX_LIMIT, becauseLimit + SIM_STEP);
+    const res = await api(`/api/because?limit=${becauseLimit}`);
+    renderBecauseRail(res);
+  } catch (err) {
+    becauseLimit = prevLimit;
+    btn.disabled = false;
+    toast(`Could not load more: ${err.message}`, 'error');
+  }
+}
+
+function renderTrendingRail(res) {
+  const rail = $('trendingRail');
+  const novels = (res && res.novels) || [];
+  if (!novels.length) { $('shelfTrending').style.display = 'none'; rail.innerHTML = ''; return; }
+  const mayHaveMore = novels.length >= trendingLimit && trendingLimit < SIM_MAX_LIMIT;
+  rail.innerHTML = novels.map((n) => simCardHTML(n)).join('') + (mayHaveMore ? moreTileHTML('trending-more') : '');
+  bindCoverFallbacks(rail);
+  $('shelfTrending').style.display = '';
+}
+
+async function loadMoreTrending(btn) {
+  btn.disabled = true;
+  const prevLimit = trendingLimit;
+  try {
+    trendingLimit = Math.min(SIM_MAX_LIMIT, trendingLimit + SIM_STEP);
+    const res = await api(`/api/trending?limit=${trendingLimit}`);
+    renderTrendingRail(res);
+  } catch (err) {
+    trendingLimit = prevLimit;
+    btn.disabled = false;
+    toast(`Could not load more: ${err.message}`, 'error');
+  }
+}
+
+async function dismissNovel(btn) {
+  const key = btn.dataset.key;
+  const card = btn.closest('.sim-card');
+  if (!key || !card) return;
+  const marker = document.createComment('dismissed');
+  try {
+    await api('/api/user_hide', { id: String(key), hide: true });
+    card.replaceWith(marker);
+    toastAction("Got it — we'll recommend fewer like this.", 'Undo', async () => {
+      try {
+        await api('/api/user_hide', { id: String(key), hide: false });
+        if (marker.parentNode) marker.replaceWith(card);
+      } catch (err) { toast(err.message, 'error'); }
+    });
+  } catch (err) {
+    toast(`Could not hide: ${err.message}`, 'error');
+  }
+}
+
+async function loadMoreRecs(btn) {
+  btn.disabled = true;
+  const prevLimit = recsLimit;
+  try {
+    recsLimit = Math.min(SIM_MAX_LIMIT, recsLimit + SIM_STEP);
+    const res = await api(`/api/recommendations?limit=${recsLimit}`);
+    renderRecsRail(res);
+  } catch (err) {
+    recsLimit = prevLimit;
+    btn.disabled = false;
+    toast(`Could not load more: ${err.message}`, 'error');
+  }
+}
+
+async function loadShelves() {
+  shelvesLoaded = true;
+  shelvesStale = false;
+  const [cont, recs, because, trending] = await Promise.all([
+    api('/api/library', { page: 1, limit: 12, readingStatus: 'reading' }).catch(() => null),
+    api(`/api/recommendations?limit=${recsLimit}`).catch(() => null),
+    api(`/api/because?limit=${becauseLimit}`).catch(() => null),
+    api(`/api/trending?limit=${trendingLimit}`).catch(() => null),
+  ]);
+  renderContinueRail(cont);
+  renderRecsRail(recs);
+  renderBecauseRail(because);
+  renderTrendingRail(trending);
+  bindCoverFallbacks($('continueRail'));
+}
+
+/* ===================== Novel detail view ===================== */
+let detailNovel = null;
+let detailToken = 0;
+let detailSimLimit = SIM_STEP;
+
+const SIM_HEADINGS = { tags: 'Similar novels', author: 'More by this author', popular: 'Popular in the library' };
+
+function novelHash(key) { return '#novel=' + encodeURIComponent(key); }
+
+function clearDetailHash() {
+  if (/^#novel=/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);
+}
+
+function closeDetail() {
+  detailToken++;
+  closeModal('detailModal');
+  clearDetailHash();
+}
+
+function requestNovelDetail(key) {
+  if (location.hash === novelHash(key)) openNovelDetail(key);
+  else location.hash = novelHash(key);
+}
+
+function detailSkeleton() {
+  return `<div class="detail-hero"><div class="sk detail-cover" style="border:none;"></div>
+    <div class="detail-head" style="flex:1;">
+      <div class="sk sk-line" style="margin:0;width:60%;height:20px;"></div>
+      <div class="sk sk-line" style="margin:12px 0 0;width:35%;"></div>
+      <div class="sk sk-line" style="margin:12px 0 0;width:45%;"></div>
+    </div></div>
+    <div class="detail-body">
+      <div class="sk sk-line" style="margin:0;"></div>
+      <div class="sk sk-line" style="margin:10px 0 0;"></div>
+      <div class="sk sk-line" style="margin:10px 0 0;width:70%;"></div>
+    </div>`;
+}
+
+async function openNovelDetail(key) {
+  const token = ++detailToken;
+  detailSimLimit = SIM_STEP;
+  openModal('detailModal');
+  $('detailContent').innerHTML = detailSkeleton();
+  try {
+    const [detail, similar] = await Promise.all([
+      api(`/api/novel/${encodeURIComponent(key)}`),
+      api(`/api/novel/${encodeURIComponent(key)}/similar?limit=${SIM_STEP}`).catch(() => null),
+    ]);
+    if (token !== detailToken) return;
+    detailNovel = detail.novel;
+    globalUserData[key] = Object.assign({}, globalUserData[key], detail.user_record || {});
+    $('detailContent').innerHTML = detailHTML(detail.novel, similar);
+    $('detailContent').querySelectorAll('img').forEach((img) => {
+      img.addEventListener('error', () => { if (img.src !== FALLBACK_COVER) img.src = FALLBACK_COVER; }, { once: true });
+    });
+    $('detailModal').querySelector('.modal').scrollTop = 0;
+  } catch (err) {
+    if (token !== detailToken) return;
+    $('detailContent').innerHTML = `
+      <div class="detail-state">
+        <h3>Couldn't load this novel</h3>
+        <p>${esc(err.message)}</p>
+        <button class="btn btn-primary" data-action="detail-retry" data-key="${esc(key)}">Try again</button>
+      </div>`;
+  }
+}
+
+function detailHTML(novel, similar) {
+  const key = novelKey(novel);
+  const user = globalUserData[key] || {};
+  const status = user.status || 'none';
+  const progress = user.progress || 0;
+  const collCount = (user.collections || []).length;
+  const cover = (!novel.cover || novel.cover.includes('placeholder.com') || novel.cover === 'null') ? FALLBACK_COVER : novel.cover;
+  const authorStr = (novel.author && novel.author !== 'Raw Upload') ? novel.author : 'Unknown';
+  const viewsStr = (novel.views === '-' || !novel.views) ? '&ndash;' : Number(novel.views).toLocaleString();
+  const likesStr = (novel.likes === '-' || !novel.likes) ? '&ndash;' : Number(novel.likes).toLocaleString();
+  const dateStr = (novel.upload_date && novel.upload_date !== LEGACY_DATE) ? novel.upload_date.split(' ')[0] : 'Legacy';
+  const translatedMark = novel.has_download ? '<span class="translated-mark">Translated</span>' : '';
+  const ref = encodeURIComponent(key);
+  const canEdit = (!novel.has_meta || novel.is_custom);
+  const readLabel = (status === 'reading' && progress > 0) ? `${ICONS.play}Continue &middot; ch. ${progress + 1}` : `${ICONS.chapters} Read online`;
+  const readClass = (status === 'reading' && progress > 0) ? 'btn-block btn-read continue' : 'btn-block btn-grad';
+
+  let badges = '';
+  if (novel.is_updated) badges += '<span class="badge updated">Updated</span>';
+  if (novel.uploaded) badges += `<span class="badge uploaded">Uploaded by ${esc(novel.uploader_name || 'User')}</span>`;
+  if (novel.age === 19) badges += '<span class="badge badge-19">19</span>';
+  if (novel.complete === 1) badges += '<span class="badge complete">Complete</span>';
+
+  const uploaderByline = (novel.uploaded && novel.uploader_name) ? ` &middot; Uploaded by <b>${esc(novel.uploader_name)}</b>` : '';
+  const displayId = (novel.id && String(novel.id).startsWith('upload_')) ? `Upload-${String(novel.id).replace(/^upload_/, '').slice(0, 8)}` : (novel.id || 'N/A');
+
+  let actions = '';
+  if (novel.has_local_read) actions += `<a href="/read/${ref}" target="_blank" rel="noopener" class="${readClass}">${readLabel}</a>`;
+  if (novel.has_download) {
+    actions += `<a href="/download/${ref}" class="btn-block btn-dl" data-action="download-direct">${ICONS.download}Download translated</a>`;
+  }
+  if (novel.has_raw) actions += `<a href="/download/${ref}?type=raw" class="btn-block btn-sub" data-action="download-direct">${ICONS.download}Download raw</a>`;
+
+  const tags = (novel.tags || []).filter((t) => t !== 'Unmatched');
+  const tagsHtml = tags.map((t) => `<span class="ctag" data-action="filter-tag" data-tag="${esc(t)}" role="button" tabindex="0" title="Filter by ${esc(t)}">${esc(t)}</span>`).join('');
+  const synopsis = esc(novel.synopsis || '').replace(/\n/g, '<br>');
+
+  let simHtml = '';
+  if (similar && similar.novels && similar.novels.length) {
+    const simMore = similar.novels.length >= detailSimLimit && detailSimLimit < SIM_MAX_LIMIT;
+    simHtml = `<div class="sim-sect"><h3 class="sim-head">${SIM_HEADINGS[similar.basis] || 'You might also like'}</h3><div class="sim-rail">`
+      + similar.novels.map((n) => simCardHTML(n)).join('')
+      + (simMore ? moreTileHTML('similar-more', key) : '')
+      + '</div></div>';
+  }
+
+  return `
+  <div class="detail-hero">
+    <div class="detail-backdrop" style="background-image:url('${esc(cover)}');"></div>
+    <img class="detail-cover" src="${esc(cover)}" alt="">
+    <div class="detail-head">
+      <h2 class="detail-title" id="detailTitle">${esc(novel.title_en)}</h2>
+      ${novel.title_kr ? `<p class="detail-title-kr">${esc(novel.title_kr)}</p>` : ''}
+      <p class="detail-byline">by <b>${esc(authorStr)}</b>${uploaderByline}</p>
+      ${badges ? `<div class="detail-badges">${badges}</div>` : ''}
+      <div class="detail-stats">
+        <span class="stat" title="Metadata ID">#${esc(displayId)}</span>
+        <span class="stat" title="Views">${ICONS.views}${viewsStr}</span>
+        <span class="stat" title="Likes">${ICONS.likes}${likesStr}</span>
+        <span class="stat" title="Chapters">${ICONS.chapters}${esc(novel.chapters)} ch.</span>
+        <span class="stat stat-date" title="${novel.has_download ? 'Translated on' : 'Added on'}">${ICONS.date}${esc(dateStr)}${translatedMark}</span>
+      </div>
+    </div>
+  </div>
+  <div class="detail-body">
+    <div class="detail-actions">${actions || '<p class="detail-note">No reading or download options are available for this novel yet.</p>'}</div>
+    <div class="detail-controls">
+      <select class="select detail-status ${esc(status)}" data-action="detail-status" data-key="${esc(key)}" aria-label="Reading status">
+        <option value="none" ${status === 'none' ? 'selected' : ''}>Not in my list</option>
+        <option value="want_to_read" ${status === 'want_to_read' ? 'selected' : ''}>Want to read</option>
+        <option value="reading" ${status === 'reading' ? 'selected' : ''}>Reading</option>
+        <option value="finished" ${status === 'finished' ? 'selected' : ''}>Finished</option>
+      </select>
+      <button class="btn" data-action="collections" data-key="${esc(key)}">${ICONS.folder}<span class="coll-btn-label">Collections${collCount ? ` (${collCount})` : ''}</span></button>
+      <button class="btn" data-action="share-novel" data-key="${esc(key)}" data-title="${esc(novel.title_en)}">${ICONS.share}Share</button>
+      ${canEdit ? `<button class="btn" data-action="edit" data-key="${esc(key)}">Edit metadata</button>` : ''}
+    </div>
+    ${tagsHtml ? `<h3 class="sect-label">Tags</h3><div class="detail-tags">${tagsHtml}</div>` : ''}
+    <h3 class="sect-label">Synopsis</h3>
+    <div class="detail-syn">${synopsis || '<i style="color:var(--text-3)">No synopsis available.</i>'}</div>
+    ${simHtml}
+  </div>`;
+}
+
+function syncGridStatus(key, status) {
+  const card = document.querySelector(`#novelGrid .card[data-key="${CSS.escape(key)}"]`);
+  if (!card) return;
+  let pill = card.querySelector('.status-pill');
+  if (status === 'none') {
+    if (pill) pill.remove();
+  } else {
+    if (!pill) {
+      const foot = card.querySelector('.card-foot');
+      if (!foot) return;
+      pill = document.createElement('span');
+      foot.appendChild(pill);
+    }
+    pill.className = `status-pill ${status}`;
+    pill.textContent = STATUS_NAMES[status] || '';
+  }
+  const novel = rawNovelsData.find((n) => novelKey(n) === key);
+  const fill = card.querySelector('.progress-fill');
+  if (novel && fill) {
+    const user = globalUserData[key] || {};
+    const total = novel.chapters > 0 ? novel.chapters : 1;
+    let pct = 0;
+    if (status === 'finished') pct = 100;
+    else if (status === 'reading' && (user.progress || 0) > 0) pct = Math.min(100, Math.round((user.progress / total) * 100));
+    fill.style.width = pct + '%';
+  }
+}
+
+async function loadMoreSimilar(key, btn) {
+  const token = detailToken;
+  btn.disabled = true;
+  const prevLimit = detailSimLimit;
+  try {
+    detailSimLimit = Math.min(SIM_MAX_LIMIT, detailSimLimit + SIM_STEP);
+    const sim = await api(`/api/novel/${encodeURIComponent(key)}/similar?limit=${detailSimLimit}`);
+    if (token !== detailToken) return;
+    const rail = document.querySelector('#detailContent .sim-rail');
+    if (!rail) return;
+    const novels = (sim && sim.novels) || [];
+    const mayHaveMore = novels.length >= detailSimLimit && detailSimLimit < SIM_MAX_LIMIT;
+    rail.innerHTML = novels.map((n) => simCardHTML(n)).join('') + (mayHaveMore ? moreTileHTML('similar-more', key) : '');
+    bindCoverFallbacks(rail);
+  } catch (err) {
+    detailSimLimit = prevLimit;
+    if (token === detailToken) {
+      btn.disabled = false;
+      toast(`Could not load more: ${err.message}`, 'error');
+    }
+  }
+}
+
+async function updateDetailStatus(key, status, sel) {
+  try {
+    const data = await api('/api/user_status', { id: String(key), status });
+    globalUserData = data.user_data;
+    sel.className = `select detail-status ${status}`;
+    toast(status === 'none' ? 'Removed from your list' : 'Status updated', 'success');
+    syncGridStatus(key, status);
+    shelvesStale = true;
+    if (state.readingStatus !== 'all') resetAndFetch();
+  } catch (err) {
+    toast(`Could not update status: ${err.message}`, 'error');
+  }
+}
+
+/* ===================== Modals ===================== */
+let lastModalTrigger = null;
+
+function openModal(id) {
+  const modal = $(id);
+  if (!modal.classList.contains('open')) lastModalTrigger = document.activeElement;
+  modal.classList.add('open');
+  const target = modal.querySelector('.modal-close, .detail-close, button');
+  if (target) target.focus();
+}
+
+function closeModal(id) {
+  const modal = $(id);
+  if (!modal.classList.contains('open')) return;
+  modal.classList.remove('open');
+  const remaining = document.querySelector('.modal-overlay.open');
+  if (remaining) {
+    const target = remaining.querySelector('.modal-close, .detail-close, button');
+    if (target) target.focus();
+  } else if (lastModalTrigger) {
+    if (document.body.contains(lastModalTrigger)) lastModalTrigger.focus();
+    lastModalTrigger = null;
+  }
+}
+
+function openEditModal(key) {
+  const novel = rawNovelsData.find((n) => novelKey(n) === key)
+    || (detailNovel && novelKey(detailNovel) === key ? detailNovel : null);
+  if (!novel) return;
+  $('editFilename').value = novel.filename;
+  $('editTitleEn').value = novel.title_en || '';
+  $('editTitleKr').value = novel.title_kr || '';
+  $('editAuthor').value = (novel.author && novel.author !== 'Raw Upload') ? novel.author : '';
+  const cov = novel.cover || '';
+  $('editCover').value = cov.startsWith('data:image') ? '' : cov;
+  $('editTags').value = (novel.tags || []).filter((t) => t !== 'Unmatched').join(', ');
+  const syn = novel.synopsis || '';
+  $('editSynopsis').value = syn.includes('No metadata found') ? '' : syn;
+  openModal('editModal');
+  $('editTitleEn').focus();
+}
+
+async function saveMetadata() {
+  const btn = $('saveBtn');
+  const payload = {
+    filename: $('editFilename').value,
+    title_en: $('editTitleEn').value,
+    title_kr: $('editTitleKr').value,
+    author: $('editAuthor').value,
+    cover: $('editCover').value,
+    tags: $('editTags').value,
+    synopsis: $('editSynopsis').value,
+  };
+  btn.disabled = true; btn.textContent = 'Saving...';
+  try {
+    await api('/api/edit', payload);
+    closeModal('editModal');
+    toast('Metadata saved', 'success');
+    resetAndFetch();
+  } catch (err) {
+    toast(`Save failed: ${err.message}`, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Save changes';
+  }
+}
+
+/* ===================== Community sharing ===================== */
+let shareContext = null;
+
+function openShareModal(kind, ref, label) {
+  shareContext = { kind, ref };
+  $('shareTarget').textContent = label || (kind === 'novel' ? 'this novel' : 'this collection');
+  $('shareMessage').value = '';
+  openModal('shareModal');
+  $('shareMessage').focus();
+}
+
+async function submitShare() {
+  if (!shareContext) return;
+  const btn = $('shareSubmitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Sharing…';
+  const message = $('shareMessage').value.trim();
+  try {
+    if (shareContext.kind === 'novel') {
+      await api('/api/community/share_novel', { id: String(shareContext.ref), message });
+    } else {
+      await api('/api/community/share_collection', { collection: shareContext.ref, message });
+    }
+    closeModal('shareModal');
+    toastAction('Shared to the community.', 'View', () => { location.href = '/community'; });
+  } catch (err) {
+    if (/username/i.test(err.message)) {
+      closeModal('shareModal');
+      toastAction('Pick a community username first.', 'Open community', () => { location.href = '/community'; });
+    } else {
+      toast(`Share failed: ${err.message}`, 'error');
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Share';
+  }
+}
+
+/* ===================== Client-Side EPUB Download with Illustrations ===================== */
+function updateDownloadModal(title, percent, statusText, detailText) {
+  const modal = $('downloadProgressModal');
+  if (!modal) return;
+  if (title) $('downloadModalTitle').textContent = title;
+  if (typeof percent === 'number') {
+    const clamped = Math.min(100, Math.max(0, percent));
+    $('downloadModalBar').style.width = clamped + '%';
+  }
+  if (statusText) $('downloadModalStatus').textContent = statusText;
+  if (detailText) $('downloadModalDetail').textContent = detailText;
+  if (!modal.classList.contains('open')) {
+    openModal('downloadProgressModal');
+  }
+}
+
+function closeDownloadModal() {
+  closeModal('downloadProgressModal');
+}
+
+function detectImageFormat(uint8Arr) {
+  if (uint8Arr.length >= 3 && uint8Arr[0] === 0xFF && uint8Arr[1] === 0xD8 && uint8Arr[2] === 0xFF) {
+    return { ext: 'jpg', mime: 'image/jpeg' };
+  }
+  if (uint8Arr.length >= 8 && uint8Arr[0] === 0x89 && uint8Arr[1] === 0x50 && uint8Arr[2] === 0x4E && uint8Arr[3] === 0x47) {
+    return { ext: 'png', mime: 'image/png' };
+  }
+  if (uint8Arr.length >= 6 && uint8Arr[0] === 0x47 && uint8Arr[1] === 0x49 && uint8Arr[2] === 0x46) {
+    return { ext: 'gif', mime: 'image/gif' };
+  }
+  if (uint8Arr.length >= 12 && uint8Arr[0] === 0x52 && uint8Arr[1] === 0x49 && uint8Arr[2] === 0x46 && uint8Arr[3] === 0x46 &&
+      uint8Arr[8] === 0x57 && uint8Arr[9] === 0x45 && uint8Arr[10] === 0x42 && uint8Arr[11] === 0x50) {
+    return { ext: 'webp', mime: 'image/webp' };
+  }
+  return { ext: 'jpg', mime: 'image/jpeg' };
+}
+
+function getRelativeZipPath(fromFilePath, toFilePath) {
+  const fromParts = fromFilePath.split('/').slice(0, -1);
+  const toParts = toFilePath.split('/');
+  while (fromParts.length && toParts.length && fromParts[0] === toParts[0]) {
+    fromParts.shift();
+    toParts.shift();
+  }
+  return '../'.repeat(fromParts.length) + toParts.join('/');
+}
+
+async function compressImageBlob(rawBlob, originalMime) {
+  // If GIF (animated) or already small (< 400KB), preserve original binary format
+  if (originalMime === 'image/gif' || rawBlob.size < 400 * 1024) {
+    const ext = originalMime === 'image/gif' ? 'gif' : (originalMime === 'image/png' ? 'png' : 'webp');
+    return { blob: rawBlob, ext: ext, mime: originalMime };
+  }
+
+  try {
+    const bitmap = await createImageBitmap(rawBlob);
+    let width = bitmap.width;
+    let height = bitmap.height;
+    const MAX_DIM = 1280;
+    if (width > MAX_DIM || height > MAX_DIM) {
+      if (width > height) {
+        height = Math.round((height * MAX_DIM) / width);
+        width = MAX_DIM;
+      } else {
+        width = Math.round((width * MAX_DIM) / height);
+        height = MAX_DIM;
+      }
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    bitmap.close();
+
+    return await new Promise((resolve) => {
+      canvas.toBlob((webpBlob) => {
+        canvas.width = 1;
+        canvas.height = 1;
+        if (webpBlob && webpBlob.size < rawBlob.size) {
+          resolve({ blob: webpBlob, ext: 'webp', mime: 'image/webp' });
+        } else {
+          resolve({ blob: rawBlob, ext: 'webp', mime: originalMime });
+        }
+      }, 'image/webp', 0.75);
+    });
+  } catch (_) {
+    return { blob: rawBlob, ext: originalMime === 'image/gif' ? 'gif' : 'jpg', mime: originalMime };
+  }
+}
+
+async function triggerDirectBrowserDownload(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 3000);
+}
+
+async function handleEpubDownload(downloadUrl, targetEl) {
+  const urlParts = (downloadUrl || '').split('/download/');
+  const novelRef = (urlParts[1] || '').split('?')[0];
+  const novelKey = novelRef || currentDetailKey || '';
+  const isRaw = downloadUrl.includes('type=raw');
+
+  let defaultName = 'novel.epub';
+  try {
+    if (novelKey && state.novelsByKey && state.novelsByKey[novelKey]) {
+      const n = state.novelsByKey[novelKey];
+      defaultName = (n.title_en || n.title_kr || 'novel').replace(/[\\/:*?"<>|]/g, '_') + '.epub';
+    }
+  } catch (_) { }
+
+  updateDownloadModal('Preparing Novel', 10, 'Initializing packaging session…', 'Scanning required illustrations');
+
+  try {
+    // 1. Initialize session on server
+    const initRes = await fetch('/api/epub_package/init', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ novel_key: novelKey, want_raw: isRaw })
+    });
+
+    if (!initRes.ok) {
+      closeDownloadModal();
+      window.location.href = downloadUrl;
+      return;
+    }
+
+    const initData = await initRes.json();
+    const sessionId = initData.session_id;
+    const urlList = initData.urls || [];
+    const finalFilename = initData.filename || defaultName;
+
+    if (urlList.length === 0) {
+      updateDownloadModal('Finalizing EPUB', 100, 'EPUB is ready!', 'No remote illustrations to fetch');
+      setTimeout(() => {
+        closeDownloadModal();
+        window.location.href = downloadUrl;
+        toast('Download complete!', 'success');
+      }, 400);
+      return;
+    }
+
+    // 2. Fetch images in client browser & stream batches to server (0% browser RAM overhead)
+    updateDownloadModal('Fetching Illustrations', 25, `Downloading 0 / ${urlList.length} images…`, 'Directly from CDN on your device');
+
+    const BATCH_SIZE = 8;
+    let downloadedCount = 0;
+    let queueIdx = 0;
+
+    while (queueIdx < urlList.length) {
+      const currentBatchUrls = urlList.slice(queueIdx, queueIdx + BATCH_SIZE);
+      queueIdx += BATCH_SIZE;
+
+      const formData = new FormData();
+      const urlMapping = {};
+      let addedToBatch = 0;
+
+      await Promise.all(currentBatchUrls.map(async (imgUrl, idx) => {
+        try {
+          const controller = new AbortController();
+          const timer = setTimeout(() => controller.abort(), 9000);
+          const res = await fetch(imgUrl, { mode: 'cors', signal: controller.signal });
+          clearTimeout(timer);
+
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const rawBlob = await res.blob();
+
+          const sliceHeader = await rawBlob.slice(0, 16).arrayBuffer();
+          const { mime } = detectImageFormat(new Uint8Array(sliceHeader));
+
+          const { blob: finalBlob, ext } = await compressImageBlob(rawBlob, mime);
+
+          const fieldKey = `file_${idx}`;
+          formData.append(fieldKey, finalBlob, `img_${idx}.${ext}`);
+          urlMapping[fieldKey] = imgUrl;
+          addedToBatch++;
+        } catch (err) {
+          console.warn('[EPUB DL] Skipped image:', imgUrl, err);
+        } finally {
+          downloadedCount++;
+          const pct = Math.round(25 + (downloadedCount / urlList.length) * 60);
+          updateDownloadModal('Fetching Illustrations', pct, `Processing ${downloadedCount} / ${urlList.length} images…`, 'Streaming to packaging engine');
+        }
+      }));
+
+      if (addedToBatch > 0) {
+        formData.append('url_mapping', JSON.stringify(urlMapping));
+        await fetch(`/api/epub_package/upload_batch/${sessionId}`, {
+          method: 'POST',
+          credentials: 'same-origin',
+          body: formData
+        });
+      }
+    }
+
+    // 3. Finalize on server
+    updateDownloadModal('Packaging EPUB', 90, 'Assembling complete offline EPUB…', 'Rebuilding chapters with offline illustrations');
+
+    const finalizeRes = await fetch(`/api/epub_package/finalize/${sessionId}`, {
+      method: 'POST',
+      credentials: 'same-origin'
+    });
+
+    if (!finalizeRes.ok) throw new Error('Finalization failed');
+    const finData = await finalizeRes.json();
+
+    updateDownloadModal('Download Ready', 100, 'EPUB packaged successfully!', 'Saving to your device');
+    setTimeout(() => {
+      closeDownloadModal();
+      window.location.href = finData.download_url;
+      toast(`Downloaded EPUB with illustrations!`, 'success');
+    }, 400);
+
+  } catch (err) {
+    console.error('Packaging error:', err);
+    closeDownloadModal();
+    toast('Image packaging failed — starting direct download', 'error');
+    window.location.href = downloadUrl;
+  }
+}
+
+/* ===================== One-time welcome popup ===================== */
+const WELCOME_KEY = 'archive_welcome_v1';
+
+function markWelcomeSeen() {
+  try { localStorage.setItem(WELCOME_KEY, String(Date.now())); } catch (_) { }
+}
+
+function maybeShowWelcome() {
+  let seen = false;
+  try { seen = !!localStorage.getItem(WELCOME_KEY); } catch (_) { seen = false; }
+  if (seen) return;
+  if (/^#novel=/.test(location.hash)) return;
+  markWelcomeSeen();
+  setTimeout(() => {
+    openModal('welcomeModal');
+    const btn = $('welcomeDismissBtn');
+    if (btn) btn.focus();
+  }, 600);
+}
+
+/* ===================== Event wiring ===================== */
+function init() {
+  applyCoverPreference();
+  applyViewMode();
+  applyPageSize();
+
+  $('viewSeg').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-val]');
+    if (!btn || btn.dataset.val === viewMode) return;
+    viewMode = btn.dataset.val;
+    localStorage.setItem('archive_view_mode', viewMode);
+    applyViewMode();
+  });
+
+  $('pageSizeSeg').addEventListener('change', (e) => {
+    const val = +e.target.value;
+    if (!PAGE_SIZES.includes(val) || val === pageSize) return;
+    pageSize = val;
+    localStorage.setItem('archive_page_size', pageSize);
+    resetAndFetch();
+  });
+
+  ['searchInput', 'minChapters', 'maxChapters', 'filterAuthor'].forEach((id) => {
+    $(id).addEventListener('input', delayFetch);
+  });
+  $('searchInput').addEventListener('search', delayFetch);
+
+  [
+    'sortBy',
+    'filterTranslatedChapter',
+    'filterUploadSource',
+    'filterAudience',
+    'filterStatus',
+  ].forEach((id) => {
+    if ($(id)) $(id).addEventListener('change', resetAndFetch);
+  });
+
+  applySortOrder();
+  $('sortOrderBtn').addEventListener('click', () => {
+    sortDesc = !sortDesc;
+    applySortOrder();
+    resetAndFetch();
+  });
+
+  $('myListSeg').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-val]');
+    if (btn) setMyList(btn.dataset.val);
+  });
+
+  $('selectModeBtn').addEventListener('click', toggleSelectionMode);
+  $('bulkSelectPageBtn').addEventListener('click', selectAllOnPage);
+  $('bulkClearBtn').addEventListener('click', () => {
+    selectedKeys.clear();
+    rerenderGridOnly();
+    updateBulkBar();
+  });
+  $('bulkRemoveBtn').addEventListener('click', performBulkRemove);
+
+  function setFilterPanel(open) {
+    $('filterPanel').classList.toggle('open', open);
+    $('filterScrim').classList.toggle('show', open);
+    $('filterToggle').setAttribute('aria-expanded', open);
+  }
+  $('filterToggle').addEventListener('click', () => setFilterPanel(!$('filterPanel').classList.contains('open')));
+  $('closeFiltersBtn').addEventListener('click', () => setFilterPanel(false));
+  $('filterScrim').addEventListener('click', () => setFilterPanel(false));
+  $('resetFiltersBtn').addEventListener('click', resetAllFilters);
+
+  $('tagMatchSeg').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-val]');
+    if (!btn) return;
+    state.tagMatch = btn.dataset.val;
+    document.querySelectorAll('#tagMatchSeg button').forEach((b) => b.classList.toggle('active', b === btn));
+    resetAndFetch();
+  });
+
+  $('tagSearch').addEventListener('input', () => {
+    const q = $('tagSearch').value.toLowerCase();
+    document.querySelectorAll('#tagCloud .ftag').forEach((el) => {
+      el.style.display = el.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+  });
+  $('tagCloud').addEventListener('click', (e) => {
+    const el = e.target.closest('.ftag');
+    if (el) cycleTag(el.dataset.tag);
+  });
+
+  $('activeChips').addEventListener('click', (e) => {
+    if (e.target.id === 'clearAllChips') { resetAllFilters(); return; }
+    const idx = e.target.dataset.chip;
+    if (idx !== undefined) {
+      chipDescriptors[Number(idx)].clear();
+      resetAndFetch();
+    }
+  });
+
+  $('manageCollectionsBtn').addEventListener('click', () => {
+    renderCollectionManager();
+    openModal('collectionsModal');
+  });
+  $('createCollectionBtn').addEventListener('click', createCollection);
+  $('newCollectionName').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); createCollection(); }
+  });
+  $('collList').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-coll-action]');
+    if (!btn) return;
+    const item = btn.closest('.coll-item');
+    const act = btn.dataset.collAction;
+    if (act === 'edit') startRenameCollection(item);
+    else if (act === 'delete') deleteCollection(item.dataset.id);
+    else if (act === 'view') {
+      state.collection = item.dataset.id;
+      closeModal('collectionsModal');
+      resetAndFetch();
+    } else if (act === 'share') {
+      openShareModal('collection', item.dataset.id, item.dataset.name);
+    }
+  });
+  $('assignList').addEventListener('change', (e) => {
+    const cb = e.target.closest('input[data-coll-id]');
+    if (!cb) return;
+    toggleAssign($('assignNovelId').value, cb.dataset.collId, cb.checked, cb);
+  });
+
+  $('novelGrid').addEventListener('click', (e) => {
+    const tagEl = e.target.closest('[data-action="filter-tag"]');
+    if (tagEl) {
+      const tag = tagEl.dataset.tag;
+      if (tag && !state.includes.has(tag)) {
+        state.includes.add(tag);
+        state.excludes.delete(tag);
+        syncTagCloud();
+        resetAndFetch();
+        toast(`Filtered by tag: ${tag}`, 'success');
+      }
+      return;
+    }
+    const card = e.target.closest('.card');
+    if (selectionMode && card && card.dataset.key) {
+      if (e.target.closest('a, button, select, textarea')) return;
+      e.preventDefault();
+      toggleCardSelection(card.dataset.key);
+      return;
+    }
+    if (e.target.closest('a, button, select, input, textarea')) return;
+    if (card && card.dataset.key) requestNovelDetail(card.dataset.key);
+  });
+  $('novelGrid').addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    if (e.target.matches && e.target.matches('[data-action="filter-tag"]')) {
+      e.preventDefault();
+      e.target.click();
+      return;
+    }
+    if (e.target.classList && e.target.classList.contains('card')) {
+      e.preventDefault();
+      if (selectionMode) toggleCardSelection(e.target.dataset.key);
+      else requestNovelDetail(e.target.dataset.key);
+    }
+  });
+  $('continueSeeAll').addEventListener('click', () => setMyList('reading'));
+  $('shelves').addEventListener('click', (e) => {
+    const dis = e.target.closest('[data-action="dismiss"]');
+    if (dis) { dismissNovel(dis); return; }
+    const more = e.target.closest('[data-action="recs-more"], [data-action="because-more"], [data-action="trending-more"]');
+    if (more) {
+      const act = more.dataset.action;
+      if (act === 'recs-more') loadMoreRecs(more);
+      else if (act === 'because-more') loadMoreBecause(more);
+      else loadMoreTrending(more);
+      return;
+    }
+    const el = e.target.closest('[data-action="open-novel"]');
+    if (el) requestNovelDetail(el.dataset.key);
+  });
+  $('shelves').addEventListener('keydown', (e) => {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('[data-action="open-novel"]')) {
+      e.preventDefault();
+      requestNovelDetail(e.target.dataset.key);
+    }
+  });
+
+  $('paginationControls').addEventListener('click', (e) => {
+    if (e.target.id === 'pageGoBtn') {
+      const v = parseInt($('pageInput').value, 10);
+      if (v >= 1) goToPage(v);
+      return;
+    }
+    const btn = e.target.closest('button[data-page]');
+    if (btn && !btn.disabled) goToPage(parseInt(btn.dataset.page, 10));
+  });
+  $('paginationControls').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.id === 'pageInput') {
+      const v = parseInt(e.target.value, 10);
+      if (v >= 1) goToPage(v);
+    }
+  });
+
+/* ===================== Upload Tag Picker Component ===================== */
+let uploadSiteTags = [];
+let uploadSiteTagsLoaded = false;
+let selectedUploadTags = [];
+let activeTagDropdownIndex = -1;
+
+async function fetchSiteTags() {
+  if (uploadSiteTagsLoaded) return;
+  try {
+    const res = await fetch('/api/tags', { credentials: 'same-origin' });
+    if (res.ok) {
+      const data = await res.json();
+      uploadSiteTags = Object.entries(data).map(([tag, count]) => ({ tag, count })).sort((a, b) => b.count - a.count);
+      uploadSiteTagsLoaded = true;
+    }
+  } catch (err) {
+    console.warn('Could not fetch site tags:', err);
+  }
+}
+
+function renderUploadTagChips() {
+  const wrapper = $('tagChipsWrapper');
+  const hiddenInput = $('uploadTags');
+  if (!wrapper || !hiddenInput) return;
+
+  wrapper.innerHTML = selectedUploadTags.map((tag, idx) => `
+    <span class="tag-chip">
+      ${esc(tag)}
+      <button type="button" class="chip-remove" onclick="removeUploadTag(${idx})" aria-label="Remove tag">&times;</button>
+    </span>
+  `).join('');
+
+  hiddenInput.value = selectedUploadTags.join(', ');
+}
+
+function addUploadTag(tagStr) {
+  const clean = tagStr.trim().replace(/,/g, '');
+  if (!clean) return;
+  if (!selectedUploadTags.some(t => t.toLowerCase() === clean.toLowerCase())) {
+    if (selectedUploadTags.length >= 30) {
+      toast('Maximum 30 tags reached.', 'error');
+      return;
+    }
+    selectedUploadTags.push(clean);
+    renderUploadTagChips();
+  }
+  const input = $('uploadTagsInput');
+  if (input) input.value = '';
+  closeTagDropdown();
+}
+
+function removeUploadTag(idx) {
+  if (idx >= 0 && idx < selectedUploadTags.length) {
+    selectedUploadTags.splice(idx, 1);
+    renderUploadTagChips();
+  }
+}
+
+function resetUploadTagPicker() {
+  selectedUploadTags = [];
+  renderUploadTagChips();
+  const input = $('uploadTagsInput');
+  if (input) input.value = '';
+  closeTagDropdown();
+}
+
+function closeTagDropdown() {
+  const menu = $('tagDropdownMenu');
+  if (menu) {
+    menu.classList.remove('show');
+    menu.innerHTML = '';
+  }
+  activeTagDropdownIndex = -1;
+}
+
+function updateTagDropdownSuggestions(query) {
+  const menu = $('tagDropdownMenu');
+  if (!menu) return;
+
+  const q = query.toLowerCase().trim();
+  const available = uploadSiteTags.filter(item => {
+    const isSelected = selectedUploadTags.some(t => t.toLowerCase() === item.tag.toLowerCase());
+    return !isSelected && (!q || item.tag.toLowerCase().includes(q));
+  });
+
+  if (available.length === 0) {
+    closeTagDropdown();
+    return;
+  }
+
+  menu.innerHTML = available.slice(0, 40).map((item, idx) => `
+    <div class="tag-dropdown-item${idx === activeTagDropdownIndex ? ' active' : ''}" data-tag="${esc(item.tag)}" data-idx="${idx}">
+      <span>${esc(item.tag)}</span>
+      <span class="tag-count">${item.count}</span>
+    </div>
+  `).join('');
+
+  menu.classList.add('show');
+}
+
+function initUploadTagPicker() {
+  const input = $('uploadTagsInput');
+  const container = $('tagChipInputContainer');
+  const menu = $('tagDropdownMenu');
+  if (!input || !container || !menu) return;
+
+  container.addEventListener('click', (e) => {
+    if (e.target !== input && !e.target.closest('.chip-remove')) {
+      input.focus();
+    }
+  });
+
+  input.addEventListener('focus', () => {
+    fetchSiteTags().then(() => updateTagDropdownSuggestions(input.value));
+  });
+
+  input.addEventListener('input', () => {
+    fetchSiteTags().then(() => updateTagDropdownSuggestions(input.value));
+  });
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ',' || e.key === 'Tab') {
+      if (activeTagDropdownIndex >= 0 && menu.classList.contains('show')) {
+        const activeItem = menu.children[activeTagDropdownIndex];
+        if (activeItem && activeItem.dataset.tag) {
+          addUploadTag(activeItem.dataset.tag);
+          e.preventDefault();
+          return;
+        }
+      }
+      if (input.value.trim()) {
+        addUploadTag(input.value);
+        e.preventDefault();
+      }
+    } else if (e.key === 'Backspace' && !input.value && selectedUploadTags.length > 0) {
+      removeUploadTag(selectedUploadTags.length - 1);
+    } else if (e.key === 'ArrowDown' && menu.classList.contains('show')) {
+      e.preventDefault();
+      const items = menu.children;
+      if (items.length > 0) {
+        if (activeTagDropdownIndex < items.length - 1) activeTagDropdownIndex++;
+        Array.from(items).forEach((it, idx) => it.classList.toggle('active', idx === activeTagDropdownIndex));
+        if (items[activeTagDropdownIndex]) items[activeTagDropdownIndex].scrollIntoView({ block: 'nearest' });
+      }
+    } else if (e.key === 'ArrowUp' && menu.classList.contains('show')) {
+      e.preventDefault();
+      const items = menu.children;
+      if (items.length > 0) {
+        if (activeTagDropdownIndex > 0) activeTagDropdownIndex--;
+        Array.from(items).forEach((it, idx) => it.classList.toggle('active', idx === activeTagDropdownIndex));
+        if (items[activeTagDropdownIndex]) items[activeTagDropdownIndex].scrollIntoView({ block: 'nearest' });
+      }
+    } else if (e.key === 'Escape') {
+      closeTagDropdown();
+    }
+  });
+
+  menu.addEventListener('click', (e) => {
+    const item = e.target.closest('.tag-dropdown-item');
+    if (item && item.dataset.tag) {
+      addUploadTag(item.dataset.tag);
+      input.focus();
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!container.contains(e.target) && !menu.contains(e.target)) {
+      closeTagDropdown();
+    }
+  });
+}
+
+  $('randomBtn').addEventListener('click', pickRandomNovel);
+  $('toggleCoverBtn').addEventListener('click', toggleCovers);
+  initUploadTagPicker();
+  if ($('uploadBtn')) {
+    $('uploadBtn').addEventListener('click', () => {
+      openModal('uploadModal');
+      resetUploadTagPicker();
+      $('uploadEnglishTitle').focus();
+    });
+  }
+  if ($('uploadForm')) {
+    $('uploadForm').addEventListener('submit', submitNovelUpload);
+  }
+  $('donateBtn').addEventListener('click', () => openModal('donateModal'));
+  $('dmcaBtn').addEventListener('click', () => openModal('dmcaModal'));
+  $('welcomeDismissBtn').addEventListener('click', () => { markWelcomeSeen(); closeModal('welcomeModal'); });
+  $('saveBtn').addEventListener('click', saveMetadata);
+  $('shareSubmitBtn').addEventListener('click', submitShare);
+
+  $('donateModal').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-copy]');
+    if (!btn) return;
+    copyText(btn.dataset.copy).then((ok) => {
+      if (ok) {
+        toast('Address copied to clipboard', 'success');
+        const orig = btn.textContent;
+        btn.textContent = 'Copied';
+        btn.classList.add('copied');
+        setTimeout(() => { btn.textContent = orig; btn.classList.remove('copied'); }, 1600);
+      } else {
+        toast('Could not copy - please select and copy manually', 'error');
+      }
+    });
+  });
+
+  document.querySelectorAll('[data-close]').forEach((b) => {
+    b.addEventListener('click', () => closeModal(b.dataset.close));
+  });
+  document.querySelectorAll('.modal-overlay').forEach((ov) => {
+    ov.addEventListener('click', (e) => { if (e.target === ov) closeModal(ov.id); });
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      document.querySelectorAll('.modal-overlay.open').forEach((m) => closeModal(m.id));
+      clearDetailHash();
+      setFilterPanel(false);
+    } else if (e.key === '/' && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) {
+      e.preventDefault();
+      $('searchInput').focus();
+    } else if (e.key === 'Tab') {
+      const overlays = document.querySelectorAll('.modal-overlay.open');
+      if (!overlays.length) return;
+      const overlay = overlays[overlays.length - 1];
+      const focusables = [...overlay.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')]
+        .filter((el) => !el.disabled && el.offsetParent !== null);
+      if (!focusables.length) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && (document.activeElement === last || !overlay.contains(document.activeElement))) { e.preventDefault(); first.focus(); }
+    }
+  });
+
+  $('detailCloseBtn').addEventListener('click', closeDetail);
+  $('detailModal').addEventListener('change', (e) => {
+    const sel = e.target.closest('select[data-action="detail-status"]');
+    if (sel) updateDetailStatus(sel.dataset.key, sel.value, sel);
+  });
+  $('detailModal').addEventListener('click', (e) => {
+    if (e.target === $('detailModal')) { closeDetail(); return; }
+    const el = e.target.closest('[data-action]');
+    if (!el) return;
+    const act = el.dataset.action;
+    if (act === 'open-novel') { requestNovelDetail(el.dataset.key); }
+    else if (act === 'similar-more') { loadMoreSimilar(el.dataset.key, el); }
+    else if (act === 'detail-retry') { openNovelDetail(el.dataset.key); }
+    else if (act === 'download' || act === 'download-direct' || act === 'download-images') {
+      // Direct instant download
+    }
+    else if (act === 'edit') { openEditModal(el.dataset.key); }
+    else if (act === 'share-novel') { openShareModal('novel', el.dataset.key, el.dataset.title); }
+    else if (act === 'collections') { openAssignModal(el.dataset.key); }
+    else if (act === 'filter-tag') {
+      const tag = el.dataset.tag;
+      if (tag && !state.includes.has(tag)) {
+        state.includes.add(tag);
+        state.excludes.delete(tag);
+        syncTagCloud();
+        resetAndFetch();
+        toast(`Filtered by tag: ${tag}`, 'success');
+      }
+      closeDetail();
+    }
+  });
+  $('detailModal').addEventListener('keydown', (e) => {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('[data-action="open-novel"], [data-action="filter-tag"]')) {
+      e.preventDefault();
+      e.target.click();
+    }
+  });
+  window.addEventListener('hashchange', () => {
+    const m = location.hash.match(/^#novel=(.+)$/);
+    if (m) openNovelDetail(decodeURIComponent(m[1]));
+    else { detailToken++; closeModal('detailModal'); }
+  });
+
+  fetchPageData();
+  loadTags();
+  loadCollections();
+  api('/api/authors')
+    .then((authors) => {
+      $('authorList').innerHTML = authors.map((a) => `<option value="${esc(a)}">`).join('');
+    })
+    .catch(() => { });
+
+  const deepLink = location.hash.match(/^#novel=(.+)$/);
+  if (deepLink) openNovelDetail(decodeURIComponent(deepLink[1]));
+
+  maybeShowWelcome();
+}
+
+init();
+</script>
+</body>
+</html>

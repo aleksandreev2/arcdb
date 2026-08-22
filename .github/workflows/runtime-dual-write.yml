@@ -22,14 +22,14 @@ jobs:
           .venv/bin/python tests/make_seed_fixtures.py dev-fixtures/inbox/Downloads.zip
           CI=1 python scripts/dev_bootstrap.py --setup-only --auto-seed-if-empty
 
-      - name: Run state and overlay unit tests
+      - name: Run state and tracked-runtime unit tests
         run: >-
           PYTHONPATH=. .venv/bin/python -m unittest -v
           tests/test_sqlite_state.py
           tests/test_runtime_state.py
           tests/test_runtime_users.py
           tests/test_runtime_metadata.py
-          tests/test_runtime_overlays.py
+          tests/test_tracked_runtime.py
           tests/test_dev_seed.py
 
       - name: Exercise real Phase 2A-2D API dual-write

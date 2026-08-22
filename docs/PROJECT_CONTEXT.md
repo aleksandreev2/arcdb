@@ -6,7 +6,11 @@ This is the fast handoff document for a new chat, AI assistant or engineer.
 
 ArchiveDB is a Flask-based novel library/reader with EPUB ingestion, local unpacked chapters/assets, per-user reading state, collections, uploads, community features and Telegram/Telethon integration.
 
-The current production application is a large monolith. The repository contains an archived development baseline plus tooling to make it reproducible locally. The production OCI instance may contain newer changes, so production deployment must reconcile against a sanitized live snapshot before replacing code.
+The current production application is a large monolith. The repository now tracks
+the behavior-compatible imported runtime directly and retains its verified source
+archive for provenance. The production OCI instance may contain newer changes, so
+production deployment must reconcile against a sanitized live snapshot before
+replacing code.
 
 ## Infrastructure known today
 
@@ -52,8 +56,8 @@ The launcher:
 - creates `.venv`;
 - installs dependencies when requirements change;
 - creates local `.env`;
-- reconstructs the archived baseline into `.runtime/source`;
-- applies fail-closed tracked runtime overlays;
+- validates and launches the directly tracked `arcdb/app.py` runtime;
+- uses the directly tracked templates under `arcdb/templates`;
 - creates a local dev account;
 - if the local library is empty and EPUB fixtures are available, seeds once;
 - ensures a compatible SQLite shadow exists;
@@ -67,6 +71,10 @@ seed-dev.bat
 ```
 
 Fixtures and generated data are local-only and ignored by Git.
+
+The compressed `.b64` baseline and overlay materializer are retained only for
+historical provenance/source reconciliation. Local and CI application startup no
+longer depend on them.
 
 ## Current storage problem
 
@@ -106,6 +114,7 @@ Implemented in repository:
 - bounded-process shadow-event auditing and a real Flask SQLite-canary -> legacy rollback rehearsal in CI.
 - read-only host discovery plus explicit-path structured production inventory and materialized-baseline reconciliation, with separate private and path-free reports.
 - WAL-aware SQLite online backup with SHA-256 manifest, database integrity checks, temporary runtime restore verification and safe new-target-only restore tooling.
+- directly tracked behavior-compatible Flask runtime/templates; bootstrap and runtime CI no longer depend on baseline materialization or text overlays.
 
 SQLite is **not** the default or production read source. Phase 3 now exposes `STATE_READ_BACKEND=legacy|sqlite`; local/CI can run the same authenticated API flows against both backends, while `legacy` remains default. Phase 3B adds `STATE_READ_SHADOW_COMPARE=1` for legacy-served requests: SQLite is read only for equality checking and payload-free match/mismatch/error events, so non-strict observation cannot replace or damage the authoritative response.
 

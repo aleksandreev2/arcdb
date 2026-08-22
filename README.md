@@ -1,6 +1,9 @@
 # ArchiveDB
 
-ArchiveDB web application. This repository currently uses the latest source archive available to us as the development baseline; the Oracle instance may contain newer production-only changes and will be reconciled later without overwriting server data blindly.
+ArchiveDB web application. The behavior-compatible runtime imported from the latest
+source archive available to us is now tracked directly under `arcdb/`; the Oracle
+instance may contain newer production-only changes and will be reconciled later
+without overwriting server data blindly.
 
 ## Start here for AI / new contributors
 
@@ -36,7 +39,7 @@ start.bat
 3. creates a local `.env` from `.env.local.example`;
 4. generates a random local Flask secret;
 5. creates the local `data/` tree;
-6. verifies and reconstructs the checked-in development baseline into `.runtime/source/`;
+6. verifies the directly tracked `arcdb/app.py` runtime and required templates;
 7. creates/maintains the local development login;
 8. if the local library is empty and EPUB fixtures exist in `dev-fixtures/inbox`, seeds once;
 9. creates or verifies the schema v3 SQLite shadow and full auth/user/collection/metadata parity;
@@ -229,7 +232,10 @@ data/
 └── dev-seed-report.json
 ```
 
-The reconstructed source and temporary baseline ZIP live under ignored `.runtime/`. Large EPUB/ZIP fixtures in `dev-fixtures/inbox/` are also ignored.
+When the historical baseline is explicitly materialized for provenance or source
+reconciliation, its reconstructed tree and temporary ZIP live under ignored
+`.runtime/`. Normal startup does not create or execute this tree. Large EPUB/ZIP
+fixtures in `dev-fixtures/inbox/` are also ignored.
 
 Telegram is disabled locally by default (`ARCHIVEDB_NO_TELEGRAM=1`). SMTP is optional. The auth CI uses only fixture accounts plus a local-only suppressed email sink and derives fixture codes from stored hashes without printing passwords or codes.
 
@@ -254,11 +260,13 @@ Production credentials, Telegram sessions, user databases, EPUBs, extracted chap
 ```text
 AGENTS.md                       AI/contributor rules and handoff entrypoint
 arcdb/storage/                  SQLite/storage migration foundation
-baseline/                       temporary checked-in compressed source baseline
+arcdb/app.py                    tracked Flask runtime entrypoint
+arcdb/templates/                tracked runtime templates
+baseline/                       retained verified historical source archive
 dev-fixtures/seed-manifest.json reproducible local library fixture mapping
 dev-fixtures/inbox/             ignored location for Downloads.zip / EPUBs
 seed-dev.bat                    explicit Windows local-data rebuild launcher
-scripts/materialize_baseline.py verifies + extracts baseline to `.runtime/source/`
+scripts/materialize_baseline.py verifies + extracts the retained historical baseline
 scripts/dev_bootstrap.py        local environment/dependency/bootstrap launcher
 scripts/dev_seed.py             local-only login seed
 scripts/dev_seed_library.py     EPUB scanner + local library/state seeder
@@ -268,12 +276,15 @@ scripts/verify_sqlite_backup.py independent backup + restore verification
 scripts/restore_sqlite_backup.py verified restore to a new target only
 scripts/oracle_inventory.sh     read-only production inventory helper
 scripts/collect_production_inventory.py structured private/path-free inventory reports
-scripts/reconcile_production_inventory.py live source vs materialized baseline diff
+scripts/reconcile_production_inventory.py live source vs historical-layout diff
 tests/                          bootstrap/seed/storage safety coverage
 docs/                           architecture, data, safety, roadmap and decisions
 ```
 
-The baseline bundle is temporary plumbing for the initial archive import. As the application is refactored, source files will move into a normal directly tracked package layout.
+The repository runtime is now tracked directly in `arcdb/app.py` and
+`arcdb/templates/`. The baseline bundle and overlay script remain only as historical
+provenance/reconciliation tooling and are not used by `start.bat` or runtime CI to
+launch the application.
 
 ## Production caution
 

@@ -14,7 +14,7 @@ This document separates **confirmed production facts**, **source-level observati
 - Telegram integration: Telethon.
 - Current codebase uses local files for EPUBs, chapters/assets and application metadata/state.
 
-## 3. Current architecture — strongly indicated by archived source
+## 3. Current architecture — strongly indicated by tracked archived source
 
 ```text
 Browser
@@ -30,6 +30,11 @@ Browser
 ```
 
 Source clues include `CF-Connecting-IP`, Cloudflare-related comments and `/home/ubuntu/...` paths.
+
+The behavior-compatible monolith is now normal tracked code at `arcdb/app.py`, with
+tracked templates in `arcdb/templates/`. Repository/local/CI startup no longer
+materializes the compressed baseline or applies runtime overlays. The historical
+bundle remains available for provenance and comparison with an older live layout.
 
 Treat Cloudflare Tunnel as strongly indicated, not finally confirmed, until live configuration is supplied.
 
@@ -296,7 +301,13 @@ Before deployment decisions that depend on them, collect:
 - existing backup/snapshot strategy.
 - real data sizes and request/job load.
 
-Use the complete read-only procedure in `docs/PRODUCTION_INVENTORY.md`: `scripts/oracle_inventory.sh` discovers candidate paths without guessed roots, the structured collector fingerprints operator-confirmed paths without payloads, and the reconciliation tool compares live source with `.runtime/source`. These tools are implemented; no live result is available yet.
+Use the complete read-only procedure in `docs/PRODUCTION_INVENTORY.md`:
+`scripts/oracle_inventory.sh` discovers candidate paths without guessed roots, the
+structured collector fingerprints operator-confirmed paths without payloads, and the
+reconciliation tool compares live source with the explicitly materialized historical
+layout. This materialization is not the runtime launch path; tracked changes under
+`arcdb/` are the proposed deployment delta. These tools are implemented; no live
+result is available yet.
 
 ## 14. Architecture rules
 
