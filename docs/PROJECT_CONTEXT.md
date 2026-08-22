@@ -124,8 +124,8 @@ Implemented in repository:
 - central Origin/Referer enforcement for every state-changing HTTP method and
   POST-only logout; exact production origins remain inventory-gated;
 - per-response nonce-only script CSP with script attributes/CDN fallback disabled;
-  shared auth CSS is a fingerprinted immutable local asset, while the remaining
-  large inline style split stays planned;
+  auth/gallery/reader/community/admin CSS is fingerprinted local static content,
+  immutable caching requires the real file hash and style CSP is self-only;
 - directly tracked behavior-compatible Flask runtime/templates; bootstrap and runtime CI no longer depend on baseline materialization or text overlays.
 - upload streams are atomically published with one final flush/fsync; EPUB ingestion
   and packaging enforce bounded structure/CRC/path/link/duplicate/size/ratio checks,
@@ -231,7 +231,8 @@ Bounded shadow-log audit (one process log per invocation):
    Telethon split is complete but not yet production-enabled.
 4. The persistent library/chapter index is implemented locally/in CI but not yet
    confirmed or measured on production storage.
-5. Frontend HTML files contain large inline CSS/JS.
+5. Large page JavaScript remains nonce-bearing and template-coupled; large CSS has
+   been split into fingerprinted tracked assets without changing the design.
 6. Community uses frequent polling.
 7. User EPUB chapter responses now use a parser and explicit tag/attribute/URL
    allowlists; production enablement remains tied to the reconciled tracked-runtime

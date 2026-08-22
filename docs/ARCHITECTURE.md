@@ -163,10 +163,13 @@ not use regex replacement as the sanitization boundary. Malformed active markup
 fails closed. See `docs/SECURITY.md`.
 
 Browser executable code uses a fresh response nonce. The policy permits self-hosted
-or nonce-bearing scripts, blocks script attributes and has no CDN dependency. Shared
-auth CSS is content-versioned and immutable-cacheable. Large content-page styles
-remain inline temporarily, so `style-src 'unsafe-inline'` is explicitly planned for
-removal with the later behavior-preserving static CSS split.
+or nonce-bearing scripts, blocks script attributes and has no CDN dependency. Auth,
+gallery, reader, community and generated admin CSS are separate local
+content-versioned assets. Immutable caching is granted only when the requested hash
+prefix matches the served file. Tracked runtime markup has no style blocks or style
+attributes; `style-src` is self-only and style attributes are blocked. This is
+implemented in repository/local/CI and is not a claim about the currently deployed
+production revision.
 
 ### SQLite WAL
 
@@ -279,12 +282,15 @@ HTTP library queries should become indexed database queries rather than `os.walk
 
 ## 10. Frontend/static target
 
-Large inline CSS/JS in HTML should gradually move to tracked static files:
+Large CSS is now tracked under `static/css` with content-versioned URLs. Reusable
+nonce-bearing page JavaScript should gradually move to tracked static modules while
+leaving only the minimum Jinja data bootstrap inline:
 
 ```text
-static/css/base.css
 static/css/gallery.css
 static/css/reader.css
+static/css/community.css
+static/css/admin-access.css
 static/js/common.js
 static/js/gallery.js
 static/js/reader.js

@@ -42,6 +42,8 @@ def main() -> int:
     assert len(nonce_sources) == 1, csp
     assert "'self'" in script_sources and "'unsafe-inline'" not in script_sources, csp
     assert directives.get("script-src-attr") == ["'none'"], csp
+    assert directives.get("style-src") == ["'self'"], csp
+    assert directives.get("style-src-attr") == ["'none'"], csp
     assert "cdnjs.cloudflare.com" not in csp and "JSZip" not in page, csp
 
     header_nonce = nonce_sources[0][len("'nonce-"):-1]
@@ -49,21 +51,35 @@ def main() -> int:
     assert page_nonces and set(page_nonces) == {header_nonce}, page_nonces
     assert re.search(r"\son[a-z]+\s*=", page, re.IGNORECASE) is None
 
-    asset = ROOT / "arcdb" / "static" / "css" / "auth.css"
-    version = hashlib.sha256(asset.read_bytes()).hexdigest()[:16]
-    with opener.open(
-        f"{BASE_URL}/static/css/auth.css?v={version}", timeout=30
-    ) as response:
-        served = response.read()
-        cache_control = response.headers.get("Cache-Control", "")
-    assert served == asset.read_bytes()
-    assert cache_control == "public, max-age=31536000, immutable", cache_control
+    css_dir = ROOT / "arcdb" / "static" / "css"
+    for name in (
+        "auth.css", "gallery.css", "reader.css", "community.css", "admin-access.css"
+    ):
+        asset = css_dir / name
+        version = hashlib.sha256(asset.read_bytes()).hexdigest()[:16]
+        with opener.open(
+            f"{BASE_URL}/static/css/{name}?v={version}", timeout=30
+        ) as response:
+            served = response.read()
+            cache_control = response.headers.get("Cache-Control", "")
+        assert served == asset.read_bytes()
+        assert cache_control == "public, max-age=31536000, immutable", (
+            name, cache_control
+        )
 
     with opener.open(f"{BASE_URL}/static/css/auth.css", timeout=30) as response:
         response.read()
         unversioned_cache = response.headers.get("Cache-Control", "")
     assert "immutable" not in unversioned_cache, unversioned_cache
-    print("Runtime nonce CSP and fingerprinted static asset workflow passed.")
+    with opener.open(
+        f"{BASE_URL}/static/css/auth.css?v={'0' * 16}", timeout=30
+    ) as response:
+        response.read()
+        wrong_version_cache = response.headers.get("Cache-Control", "")
+    assert "immutable" not in wrong_version_cache, wrong_version_cache
+    assert re.search(r"\sstyle\s*=", page, re.IGNORECASE) is None
+    assert re.search(r"<style\b", page, re.IGNORECASE) is None
+    print("Runtime script/style CSP and fingerprinted static asset workflow passed.")
     return 0
 
 

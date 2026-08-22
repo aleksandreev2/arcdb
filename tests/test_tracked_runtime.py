@@ -205,6 +205,9 @@ class TrackedRuntimeSourceTests(unittest.TestCase):
         self.assertIn("g.csp_nonce = secrets.token_urlsafe(24)", text)
         self.assertIn("script-src 'self' 'nonce-", text)
         self.assertIn("script-src-attr 'none'", text)
+        self.assertIn('"style-src \'self\'; "', text)
+        self.assertIn('"style-src-attr \'none\'; "', text)
+        self.assertNotIn("style-src 'self' 'unsafe-inline'", text)
         self.assertNotIn("https://cdnjs.cloudflare.com", text)
 
         templates = {
@@ -225,15 +228,43 @@ class TrackedRuntimeSourceTests(unittest.TestCase):
         self.assertIn("<per-response-csp-nonce>", parity)
         self.assertIn("normalized(control_result) == normalized(candidate_result)", parity)
 
-        auth_css = ROOT / "arcdb" / "static" / "css" / "auth.css"
-        version = hashlib.sha256(auth_css.read_bytes()).hexdigest()[:16]
-        expected_link = f'/static/css/auth.css?v={version}'
+        css_dir = ROOT / "arcdb" / "static" / "css"
+        auth_css = css_dir / "auth.css"
+        auth_version = hashlib.sha256(auth_css.read_bytes()).hexdigest()[:16]
+        expected_link = f'/static/css/auth.css?v={auth_version}'
         for name in (
             "login.html", "register.html", "verify.html",
             "forgot_password.html", "reset_password.html",
         ):
             self.assertIn(expected_link, templates[name])
             self.assertNotIn("<style>", templates[name])
+
+        for template_name, stylesheet_name in (
+            ("gallery.html", "gallery.css"),
+            ("reader.html", "reader.css"),
+            ("community.html", "community.css"),
+        ):
+            stylesheet = css_dir / stylesheet_name
+            version = hashlib.sha256(stylesheet.read_bytes()).hexdigest()[:16]
+            self.assertIn(
+                f'/static/css/{stylesheet_name}?v={version}',
+                templates[template_name],
+            )
+
+        admin_css = css_dir / "admin-access.css"
+        admin_version = hashlib.sha256(admin_css.read_bytes()).hexdigest()[:16]
+        self.assertIn(
+            f'/static/css/admin-access.css?v={admin_version}',
+            text,
+        )
+
+        rendered_sources = combined + "\n" + text
+        self.assertIsNone(re.search(r"<style\b", rendered_sources, re.IGNORECASE))
+        self.assertIsNone(re.search(r"\sstyle\s*=", rendered_sources, re.IGNORECASE))
+        self.assertNotIn(".style.", rendered_sources)
+        self.assertNotIn("__STYLESHEET_LINK__", rendered_sources)
+        self.assertNotIn("__ADMIN_STYLESHEET_LINK__", rendered_sources)
+        self.assertIn("actual_version.startswith(asset_version)", text)
 
     def test_state_changes_are_centrally_origin_protected(self) -> None:
         text = TRACKED_APP.read_text(encoding="utf-8")
