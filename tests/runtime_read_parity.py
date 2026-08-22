@@ -36,6 +36,10 @@ class Client:
         )
         with self.opener.open(request, timeout=30) as response:
             body = response.read()
+            request_id = response.headers.get("X-Request-ID", "")
+            assert len(request_id) == 32 and all(
+                char in "0123456789abcdef" for char in request_id
+            ), (path, request_id)
             content_type = response.headers.get_content_type()
             if content_type == "application/json":
                 body = json.loads(body.decode("utf-8"))
@@ -62,6 +66,8 @@ def main() -> int:
 
     assert_same(control, candidate, "/login", form={"email": email, "password": password})
     cases = (
+        ("/healthz", {}),
+        ("/readyz", {}),
         ("/api/library", {"payload": {"page": 1, "limit": 50}}),
         ("/api/collections", {}),
         ("/api/novel/422601", {}),
@@ -73,7 +79,7 @@ def main() -> int:
     )
     for path, kwargs in cases:
         assert_same(control, candidate, path, **kwargs)
-    print(f"Read-backend API parity passed for {len(cases)} authenticated endpoints.")
+    print(f"Read-backend API parity passed for {len(cases)} runtime endpoints.")
     return 0
 
 

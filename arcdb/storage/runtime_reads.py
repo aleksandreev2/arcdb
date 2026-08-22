@@ -112,6 +112,12 @@ def state_read_backend() -> str:
     return backend
 
 
+def check_state_read_backend_ready() -> None:
+    """Validate active read-backend configuration without exporting state."""
+    if state_read_backend() == "sqlite":
+        _read_sqlite(lambda conn: conn.execute("SELECT 1").fetchone())
+
+
 def _db_path() -> Path:
     raw = os.environ.get("SQLITE_DB_PATH", "./data/arcdb.sqlite3")
     path = Path(raw)

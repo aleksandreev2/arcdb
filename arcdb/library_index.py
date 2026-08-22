@@ -417,6 +417,32 @@ class LibraryIndex:
                 raise LibraryIndexUnavailable("Library index metadata is inconsistent")
             return {**checks, **meta}
 
+    def check_ready(self) -> None:
+        """Perform a bounded read-path probe suitable for frequent readiness checks."""
+        try:
+            with closing(self._read_connection()) as conn:
+                meta = dict(
+                    conn.execute(
+                        "SELECT key, value FROM index_meta "
+                        "WHERE key IN ('generation_id', 'item_count')"
+                    ).fetchall()
+                )
+                item_count = conn.execute(
+                    "SELECT COUNT(*) FROM library_items"
+                ).fetchone()[0]
+                if not meta.get("generation_id"):
+                    raise LibraryIndexUnavailable("Library index generation is missing")
+                if _integer(meta.get("item_count"), -1) != item_count:
+                    raise LibraryIndexUnavailable(
+                        "Library index metadata is inconsistent"
+                    )
+        except LibraryIndexUnavailable:
+            raise
+        except sqlite3.Error as exc:
+            raise LibraryIndexUnavailable(
+                "Library index readiness check failed"
+            ) from exc
+
     def generation(self) -> str:
         with closing(self._read_connection()) as conn:
             row = conn.execute(

@@ -6,6 +6,11 @@ Record reproducible measurements before and after request-path performance chang
 Local results establish code-level regressions and memory shape; they are not OCI
 capacity claims and do not replace production measurements.
 
+The web runtime emits payload-free `[REQUEST]` events with route template, method,
+status and duration. For a bounded log, `scripts/summarize_request_timings.py`
+produces per-route p50/p95/p99 JSON without request IDs or the input path. No
+production request baseline has been collected yet.
+
 ## EPUB packaging I/O — 2026-08-22
 
 Command:
