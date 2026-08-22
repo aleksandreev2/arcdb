@@ -278,12 +278,15 @@ Some items can occur earlier when touching related code:
 
 ## Phase 12 — performance tuning based on measurements
 
+Status: baseline request timing instrumentation is implemented in repository/local
+CI; production measurements and tuning remain pending.
+
 After process-local state is removed/split:
 
 - benchmark Gunicorn process/thread combinations;
 - inspect Block Volume I/O;
 - adjust VPU tier only if measured I/O remains a bottleneck;
-- add request/job timing metrics;
+- extend request timing with bounded subsystem/job timings where measurements justify it;
 - tune caching based on hit rates, not guesses.
 
 ## Current immediate order

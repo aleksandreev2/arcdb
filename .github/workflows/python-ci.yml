@@ -26,6 +26,7 @@ jobs:
           arcdb/epub_io.py
           arcdb/jobs.py
           arcdb/library_index.py
+          arcdb/observability.py
           arcdb/package_worker.py
           arcdb/telegram_gateway.py
           arcdb/telegram_service.py
@@ -48,6 +49,7 @@ jobs:
           scripts/run_packager.py
           scripts/run_telegram.py
           scripts/reindex_library.py
+          scripts/summarize_request_timings.py
           scripts/migrate_state_to_sqlite.py
           scripts/verify_migration_backup.py
           scripts/export_sqlite_to_legacy.py
@@ -74,6 +76,7 @@ jobs:
           tests/test_epub_io.py
           tests/test_jobs.py
           tests/test_library_index.py
+          tests/test_observability.py
           tests/test_telegram_service.py
           tests/test_tracked_runtime.py
           tests/test_telegram_service.py
@@ -185,6 +188,18 @@ jobs:
           done
 
           curl --fail --silent --show-error \
+            -D health-headers.txt \
+            http://127.0.0.1:5004/healthz > health.json
+          curl --fail --silent --show-error \
+            http://127.0.0.1:5004/readyz > readiness.json
+          grep -Eiq '^x-request-id: [0-9a-f]{32}\r?$' health-headers.txt
+          .venv/bin/python - <<'PY'
+          import json
+          assert json.load(open('health.json', encoding='utf-8')) == {'status': 'ok'}
+          assert json.load(open('readiness.json', encoding='utf-8')) == {'status': 'ready'}
+          PY
+
+          curl --fail --silent --show-error \
             -c cookies.txt \
             -d 'email=dev@arcdb.local&password=arcdb-dev-123' \
             -X POST http://127.0.0.1:5004/login >/dev/null
@@ -232,6 +247,7 @@ jobs:
           tests/test_runtime_users.py
           tests/test_runtime_metadata.py
           tests/test_library_index.py
+          tests/test_observability.py
           tests/test_tracked_runtime.py
           tests/test_dev_seed.py
       - name: Run read-only cutover readiness preflight

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from contextlib import closing
 from pathlib import Path
+import sqlite3
 import tempfile
 import unittest
 
@@ -259,6 +261,20 @@ class LibraryIndexTests(unittest.TestCase):
     def test_missing_index_fails_closed(self) -> None:
         with self.assertRaises(LibraryIndexUnavailable):
             self.index.all_items()
+
+    def test_bounded_readiness_probe_fails_closed(self) -> None:
+        with self.assertRaises(LibraryIndexUnavailable):
+            self.index.check_ready()
+        self.rebuild()
+        self.assertIsNone(self.index.check_ready())
+
+        with closing(sqlite3.connect(self.path)) as conn:
+            conn.execute(
+                "UPDATE index_meta SET value='999' WHERE key='item_count'"
+            )
+            conn.commit()
+        with self.assertRaises(LibraryIndexUnavailable):
+            self.index.check_ready()
 
 
 if __name__ == "__main__":

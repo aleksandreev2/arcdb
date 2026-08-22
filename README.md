@@ -22,6 +22,7 @@ Read these before architecture/storage changes:
 11. `docs/PERFORMANCE_BASELINE.md` — reproducible before/after measurements.
 12. `docs/ASYNC_PACKAGER.md` — persistent queue, worker, API and rollout procedure.
 13. `docs/TELEGRAM_SERVICE.md` — isolated Telethon service, rollout and rollback.
+14. `docs/OBSERVABILITY.md` — sanitized web health/readiness and request timing.
 14. `docs/LIBRARY_INDEX.md` — persistent library/chapter index, rebuild and rollout.
 
 Material architectural changes should update the relevant docs in the same PR.
@@ -313,6 +314,11 @@ Browser
 ```
 
 Production credentials, Telegram sessions, user databases, EPUBs, extracted chapters and other runtime data must never be committed.
+
+The web process exposes payload-free `GET /healthz` and `GET /readyz` endpoints.
+Normal request logs use bounded Flask route templates and include request ID, method,
+status and duration without email/IP/payload data. See `docs/OBSERVABILITY.md` for
+the exact contract and the p50/p95/p99 summarizer.
 
 ## Repository layout
 

@@ -13,6 +13,7 @@ from arcdb.storage.legacy_import import replace_from_documents
 from arcdb.storage.runtime_reads import (
     StateReadComparisonError,
     StateReadError,
+    check_state_read_backend_ready,
     read_allowed_emails,
     read_collections,
     read_custom_meta,
@@ -51,6 +52,30 @@ class RuntimeReadBackendTests(unittest.TestCase):
         ):
             self.assertEqual(read_users(loader), {"legacy": True})
         loader.assert_called_once_with()
+
+    def test_bounded_backend_readiness_probe(self) -> None:
+        with patch.dict(os.environ, {"STATE_READ_BACKEND": "legacy"}, clear=False):
+            self.assertIsNone(check_state_read_backend_ready())
+
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "state.sqlite3"
+            self._seed(db)
+            with patch.dict(
+                os.environ,
+                {"STATE_READ_BACKEND": "sqlite", "SQLITE_DB_PATH": str(db)},
+                clear=False,
+            ):
+                self.assertIsNone(check_state_read_backend_ready())
+            with patch.dict(
+                os.environ,
+                {
+                    "STATE_READ_BACKEND": "sqlite",
+                    "SQLITE_DB_PATH": str(Path(tmp) / "missing.sqlite3"),
+                },
+                clear=False,
+            ):
+                with self.assertRaises(StateReadError):
+                    check_state_read_backend_ready()
 
     def test_sqlite_exports_every_state_domain_exactly(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -140,6 +140,12 @@ This is intentionally simple. OCI remains the heavy compute origin.
 
 Current transition status: Phase 2A–2D writes are complete for schema v3. Phase 3 provides `STATE_READ_BACKEND=legacy|sqlite` for users, user state, collections, uploads, custom metadata and allowlist. Phase 3B can additionally read SQLite alongside legacy-served requests and emit payload-free comparison events. An explicit-path read-only preflight produces a sanitized, non-authorizing health/parity/source-stability report for production reconciliation. Phase 3C validates one bounded process's event stream and CI rehearses replacement of an SQLite-read canary process with a legacy-only process on the same port. WAL-aware operational backup creates a portable verified artifact through SQLite's online backup API and proves it with a temporary runtime restore; restoration publishes only a new path. `legacy` remains the default; these local/CI controls do not substitute for live reconciliation, traffic observation or operator authorization.
 
+The web runtime now exposes separate payload-free liveness and bounded readiness
+contracts. Readiness checks the derived library index and the configured state-read
+backend without running a full migration preflight. Request timing logs use Flask
+route templates and omit identities, URLs, query strings and payloads; see
+`docs/OBSERVABILITY.md`.
+
 ### SQLite WAL
 
 For hot mutable application state:

@@ -118,6 +118,8 @@ Implemented in repository:
 - bounded-process shadow-event auditing and a real Flask SQLite-canary -> legacy rollback rehearsal in CI.
 - read-only host discovery plus explicit-path structured production inventory and materialized-baseline reconciliation, with separate private and path-free reports.
 - WAL-aware SQLite online backup with SHA-256 manifest, database integrity checks, temporary runtime restore verification and safe new-target-only restore tooling.
+- payload-free web liveness/readiness endpoints, per-response request IDs and bounded
+  request timing events with a p50/p95/p99 summarizer;
 - directly tracked behavior-compatible Flask runtime/templates; bootstrap and runtime CI no longer depend on baseline materialization or text overlays.
 - upload streams are atomically published with one final flush/fsync; EPUB ingestion and packaging enforce bounded structure/CRC/path/link/duplicate/size/ratio checks, atomic extraction and owner-limited package sessions; finalization streams archive entries instead of retaining the complete archive in RAM.
 
@@ -221,7 +223,9 @@ Bounded shadow-log audit (one process log per invocation):
 5. Frontend HTML files contain large inline CSS/JS.
 6. Community uses frequent polling.
 7. User EPUB sanitization uses regex-style HTML cleaning rather than a robust allowlist parser.
-8. State-changing routes need a systematic CSRF/same-origin review.
+8. State-changing routes need a systematic CSRF/same-origin review. Web
+   health/readiness and baseline request timing are implemented; production probe,
+   retention and alert configuration remains inventory-gated.
 
 ## Target architecture
 

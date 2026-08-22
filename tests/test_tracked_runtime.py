@@ -152,6 +152,27 @@ class TrackedRuntimeSourceTests(unittest.TestCase):
         self.assertIn("waitForPackageJob", gallery)
         self.assertIn("/api/jobs/${activeJobId}/cancel", gallery)
 
+    def test_web_health_readiness_and_request_timing_are_sanitized(self) -> None:
+        text = TRACKED_APP.read_text(encoding="utf-8")
+        for marker in (
+            '@app.route("/healthz", methods=["GET"])',
+            '@app.route("/readyz", methods=["GET"])',
+            "LIBRARY_INDEX.check_ready()",
+            "check_state_read_backend_ready()",
+            "request_id=",
+            "route=",
+            "method=",
+            "status=",
+            "duration_ms=",
+            'response.headers.setdefault("X-Request-ID", request_id)',
+        ):
+            self.assertIn(marker, text)
+        log_start = text.index("def log_request")
+        log_end = text.index("_CSP =", log_start)
+        request_log = text[log_start:log_end]
+        self.assertNotIn('session.get("user_email"', request_log)
+        self.assertNotIn("get_client_ip()", request_log)
+
     def test_library_and_reader_runtime_paths_use_persistent_index(self) -> None:
         text = TRACKED_APP.read_text(encoding="utf-8")
 

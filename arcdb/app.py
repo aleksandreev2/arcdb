@@ -50,6 +50,7 @@ from flask import (
     Flask,
     Response,
     after_this_request,
+    g,
     jsonify,
     make_response,
     redirect,
@@ -73,6 +74,7 @@ from arcdb.epub_io import (
 )
 from arcdb.jobs import JobStore
 from arcdb.library_index import LibraryIndex, LibraryIndexUnavailable
+from arcdb.storage.runtime_reads import StateReadError, check_state_read_backend_ready
 from arcdb.telegram_gateway import TelegramGateway, TelegramGatewayError
 
 # ====================================================================
@@ -282,6 +284,8 @@ COOLDOWN_SECONDS = 60
 AUTO_BAN_IGNORE_PREFIXES = (
     "/favicon.ico",
     "/static/",
+    "/healthz",
+    "/readyz",
     "/api/read/",
     "/read/",
     "/api/user_progress",
@@ -352,6 +356,11 @@ app.config.update(
 
 for _message in _STARTUP_WARNINGS:
     print(f"[CONFIG WARNING] {_message}")
+
+@app.before_request
+def begin_request_observation():
+    g.request_id = uuid.uuid4().hex
+    g.request_started_at = time.perf_counter()
 
 def get_client_ip():
     """Extract real client IP considering Cloudflare Tunnel proxies."""
@@ -427,7 +436,7 @@ def throttle_spammers():
 
     return None
 
-_ACCESS_LOG_SKIP_PREFIXES = ("/favicon.ico",)
+_ACCESS_LOG_SKIP_PREFIXES = ("/favicon.ico", "/static/")
 _CTRL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 
 def _log_safe(value):
@@ -437,24 +446,25 @@ def _log_safe(value):
 def log_request(response):
     try:
         path = request.path
-
-        if path.startswith(_ACCESS_LOG_SKIP_PREFIXES) or any(part in path for part in AUTO_BAN_IGNORE_CONTAINS):
-            return response
-
-        client_ip = get_client_ip()
-        now = time.time()
-
-        with AUTO_BAN_LOCK:
-            cooldown_until = ip_cooldowns.get(client_ip)
-            if cooldown_until and now < cooldown_until:
-                return response
-
-        email = session.get("user_email", "") or "-"
-
-        print(
-            f"[ACCESS] email={_log_safe(email)} ip={_log_safe(client_ip)} "
-            f"{_log_safe(request.method)} {_log_safe(path)} -> {response.status_code}"
+        request_id = getattr(g, "request_id", uuid.uuid4().hex)
+        started_at = getattr(g, "request_started_at", None)
+        duration_ms = (
+            max(0.0, (time.perf_counter() - started_at) * 1000.0)
+            if started_at is not None
+            else 0.0
         )
+        response.headers.setdefault("X-Request-ID", request_id)
+
+        if not (
+            path.startswith(_ACCESS_LOG_SKIP_PREFIXES)
+            or any(part in path for part in AUTO_BAN_IGNORE_CONTAINS)
+        ):
+            route = request.url_rule.rule if request.url_rule is not None else "unmatched"
+            print(
+                f"[REQUEST] request_id={_log_safe(request_id)} "
+                f"route={_log_safe(route)} method={_log_safe(request.method)} "
+                f"status={response.status_code} duration_ms={duration_ms:.3f}"
+            )
 
     except Exception:
         pass
@@ -3152,6 +3162,21 @@ def require_json(*required_keys):
 # ====================================================================
 # 12. ROUTES - PAGES & AUTH
 # ====================================================================
+@app.route("/healthz", methods=["GET"])
+def healthz():
+    return jsonify({"status": "ok"})
+
+
+@app.route("/readyz", methods=["GET"])
+def readyz():
+    try:
+        LIBRARY_INDEX.check_ready()
+        check_state_read_backend_ready()
+    except (LibraryIndexUnavailable, StateReadError, OSError):
+        return jsonify({"status": "not_ready"}), 503
+    return jsonify({"status": "ready"})
+
+
 @app.route("/")
 @login_required
 def index():
