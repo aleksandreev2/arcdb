@@ -69,6 +69,7 @@ def main() -> int:
         ("/api/community/overview", {}),
         ("/read/422601", {}),
         ("/admin/access", {}),
+        ("/api/admin/state-read-probe", {}),
     )
     for path, kwargs in cases:
         assert_same(control, candidate, path, **kwargs)

@@ -3418,6 +3418,27 @@ def api_tags():
 def api_authors():
     return jsonify(LIBRARY_INDEX.authors())
 
+@app.route("/api/admin/state-read-probe", methods=["GET"])
+@login_required
+def api_admin_state_read_probe():
+    """Exercise every state read adapter without returning state or identities."""
+    if session.get("user_email", "") not in ADMIN_EMAILS:
+        return json_error("Forbidden.", 403)
+    values = {
+        "users": load_users(),
+        "user_data": load_user_data(),
+        "collections": load_collections(),
+        "user_uploads": load_user_uploads(),
+        "custom_meta": load_custom_meta(),
+        "allowed_emails": get_allowed_emails(),
+    }
+    if any(not isinstance(value, (dict, set, list)) for value in values.values()):
+        return json_error("State read probe failed.", 503)
+    return jsonify({
+        "status": "ok",
+        "domains": sorted(values),
+    })
+
 @app.route("/api/user_status", methods=["POST"])
 @login_required
 def api_user_status():

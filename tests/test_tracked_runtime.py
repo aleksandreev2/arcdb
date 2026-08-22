@@ -118,6 +118,19 @@ class TrackedRuntimeSourceTests(unittest.TestCase):
             self.assertIn(marker, text)
         self.assertIn("STATE_DUAL_WRITE_STRICT", text)
         self.assertNotIn("save_user_data(all_udata)", text)
+        probe_start = text.index("def api_admin_state_read_probe")
+        probe_end = text.index('@app.route("/api/user_status"', probe_start)
+        probe = text[probe_start:probe_end]
+        for reader in (
+            "load_users()",
+            "load_user_data()",
+            "load_collections()",
+            "load_user_uploads()",
+            "load_custom_meta()",
+            "get_allowed_emails()",
+        ):
+            self.assertIn(reader, probe)
+        self.assertNotIn("len(", probe)
 
     def test_runtime_uses_bounded_epub_io_paths(self) -> None:
         text = TRACKED_APP.read_text(encoding="utf-8")

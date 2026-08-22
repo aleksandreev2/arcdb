@@ -503,3 +503,8 @@ user-data migration and make a derived cache part of rollback authority. Explici
 rebuild and fail-closed reads remove full storage scans and linear lookup from hot
 paths without changing API identifiers or risking user state. SQLite is sufficient
 for the single-VM architecture and avoids an unnecessary search service.
+
+The index also removes incidental custom-metadata reads from `/api/library`.
+Therefore bounded shadow observation uses an explicit admin-only, payload-free
+state-read probe for all schema-v3 domains instead of depending on side effects of a
+filesystem scan. This keeps coverage stable as request paths become more efficient.
