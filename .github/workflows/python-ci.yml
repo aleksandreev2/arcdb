@@ -192,11 +192,13 @@ jobs:
             http://127.0.0.1:5004/healthz > health.json
           curl --fail --silent --show-error \
             http://127.0.0.1:5004/readyz > readiness.json
-          grep -Eiq '^x-request-id: [0-9a-f]{32}\r?$' health-headers.txt
           .venv/bin/python - <<'PY'
           import json
+          import re
           assert json.load(open('health.json', encoding='utf-8')) == {'status': 'ok'}
           assert json.load(open('readiness.json', encoding='utf-8')) == {'status': 'ready'}
+          headers = open('health-headers.txt', encoding='utf-8').read()
+          assert re.search(r'(?im)^x-request-id: [0-9a-f]{32}\r?$', headers), headers
           PY
 
           curl --fail --silent --show-error \
