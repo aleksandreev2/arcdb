@@ -207,11 +207,19 @@ prove the unit or its Block Volume paths are live.
 
 ## Phase 7 — split Telethon
 
-- remove Telethon startup from Flask module import;
-- create dedicated Telegram service;
-- define shared persistence/event boundary;
-- ensure web restarts do not restart Telegram client;
-- only then reconsider web worker count.
+Repository/local/CI implementation completed:
+
+- removed Telethon imports, startup, asyncio loop and session credentials from web;
+- added one dedicated Telegram service with an authenticated loopback streaming
+  boundary, health/readiness and sanitized failures;
+- restricted the web client to loopback, disabled redirects and preserved streaming;
+- added local opt-in lifecycle management, a one-worker systemd template and
+  separate environment ownership;
+- covered service auth/readiness/streaming, web failure mapping and duplicate-start
+  isolation with tests.
+
+Production enablement remains inventory/operator-gated. Other process-local web
+state still prevents increasing Gunicorn workers without measurement and review.
 
 ## Phase 8 — persistent library/chapter index
 
@@ -281,15 +289,15 @@ After process-local state is removed/split:
 3. bounded SQLite read canary
 4. SQLite primary reads
 5. stop legacy writes domain-by-domain
-6. Telethon split
-7. persistent library index/frontend split
+6. production-enable the implemented Telethon split after inventory
+7. persistent library index/frontend split (next repository-side stage)
 8. security/observability and measured performance work
 9. R2/Cloudflare optimization
 ```
 
-Without live-production inputs, Phase 7 is the next independent repository-side
-stage; production read-cutover and packager service enablement remain operator-gated
-rather than guessed.
+Without live-production inputs, Phase 8 is the next independent repository-side
+stage; production read-cutover, packager and Telegram service enablement remain
+operator-gated rather than guessed.
 
 ## Explicit non-goals for now
 

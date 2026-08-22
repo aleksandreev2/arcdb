@@ -21,6 +21,7 @@ Read these before architecture/storage changes:
 10. `docs/DECISIONS.md` — architectural decisions and rationale.
 11. `docs/PERFORMANCE_BASELINE.md` — reproducible before/after measurements.
 12. `docs/ASYNC_PACKAGER.md` — persistent queue, worker, API and rollout procedure.
+13. `docs/TELEGRAM_SERVICE.md` — isolated Telethon service, rollout and rollback.
 
 Material architectural changes should update the relevant docs in the same PR.
 
@@ -45,7 +46,8 @@ start.bat
 7. creates/maintains the local development login;
 8. if the local library is empty and EPUB fixtures exist in `dev-fixtures/inbox`, seeds once;
 9. creates or verifies the schema v3 SQLite shadow and full auth/user/collection/metadata parity;
-10. starts ArchiveDB at `http://127.0.0.1:5004/login` and opens it in the browser.
+10. starts web and the separate EPUB packager at `http://127.0.0.1:5004/login` and
+    opens it in the browser. The separate Telegram service remains opt-in locally.
 
 Normal startup does **not** reset an already populated local library.
 
@@ -269,7 +271,12 @@ reconciliation, its reconstructed tree and temporary ZIP live under ignored
 `.runtime/`. Normal startup does not create or execute this tree. Large EPUB/ZIP
 fixtures in `dev-fixtures/inbox/` are also ignored.
 
-Telegram is disabled locally by default (`ARCHIVEDB_NO_TELEGRAM=1`). SMTP is optional. The auth CI uses only fixture accounts plus a local-only suppressed email sink and derives fixture codes from stored hashes without printing passwords or codes.
+Telegram is a separate process and is disabled locally by default
+(`ARCHIVEDB_START_TELEGRAM=0`). Web imports never create a Telethon client. See
+`docs/TELEGRAM_SERVICE.md` for the private environment split and opt-in procedure.
+SMTP is optional. The auth CI uses only fixture accounts plus a local-only suppressed
+email sink and derives fixture codes from stored hashes without printing passwords
+or codes.
 
 ## Current production architecture (known so far)
 

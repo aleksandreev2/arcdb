@@ -35,8 +35,14 @@ class TrackedRuntimeSourceTests(unittest.TestCase):
         self.assertTrue((ROOT / "arcdb" / "jobs.py").is_file())
         self.assertTrue((ROOT / "arcdb" / "package_worker.py").is_file())
         self.assertTrue((ROOT / "scripts" / "run_packager.py").is_file())
+        self.assertTrue((ROOT / "arcdb" / "telegram_gateway.py").is_file())
+        self.assertTrue((ROOT / "arcdb" / "telegram_service.py").is_file())
+        self.assertTrue((ROOT / "scripts" / "run_telegram.py").is_file())
         self.assertTrue(
             (ROOT / "deploy" / "systemd" / "arcdb-packager.service.example").is_file()
+        )
+        self.assertTrue(
+            (ROOT / "deploy" / "systemd" / "arcdb-telegram.service.example").is_file()
         )
         expected_templates = {
             "community.html",

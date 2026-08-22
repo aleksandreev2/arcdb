@@ -26,7 +26,7 @@ Browser
         -> local EPUB files
         -> unpacked chapter/image trees
         -> caches/temp packaging sessions
-        -> Telethon client/thread
+        -> Telethon client/thread (historical archived baseline only)
 ```
 
 Source clues include `CF-Connecting-IP`, Cloudflare-related comments and `/home/ubuntu/...` paths.
@@ -62,13 +62,17 @@ This does not mean the application should be rewritten as microservices. The goa
 
 ### Process-local state
 
-The archived application contains process-local structures such as:
+The tracked web application still contains process-local structures such as:
 
 - locks;
 - request/rate-limit buckets;
 - caches;
 - download trackers;
-- Telethon client/thread state.
+
+The historical baseline also contains Telethon client/thread state. The tracked
+repository runtime has removed it from web and delegates media streaming to a
+single-owner loopback service. Other process-local structures still block blind
+Gunicorn scaling.
 
 Therefore, blindly increasing Gunicorn worker count can produce divergent state and duplicate Telegram clients.
 
@@ -186,8 +190,9 @@ arcdb-telegram.service
 cloudflared.service
 ```
 
-The names are proposed, not yet live-production facts. The repository includes an
-`arcdb-packager` systemd template, but actual paths/user/unit enablement are unknown.
+The names are proposed, not yet live-production facts. The repository includes
+`arcdb-packager` and single-worker `arcdb-telegram` systemd templates, but actual
+paths/user/unit enablement are unknown.
 
 ### Web service
 
@@ -223,7 +228,11 @@ EPUB publication remains bounded and atomic. See `docs/ASYNC_PACKAGER.md`.
 
 ### Telegram worker
 
-Owns the Telethon client/session and Telegram synchronization/events. It must not be duplicated merely because web workers scale.
+Owns the only Telethon client/session and Telegram media streaming. Repository web
+workers call it over token-authenticated loopback HTTP and never import Telethon.
+Its health/readiness endpoints contain no paths, identities or credentials. It must
+run with exactly one Gunicorn worker; request threads do not duplicate the client.
+See `docs/TELEGRAM_SERVICE.md`. Production enablement remains inventory-gated.
 
 ## 9. Library indexing target
 
@@ -290,8 +299,9 @@ Ordered roughly by value/risk:
 2. replace hot JSON whole-file state with SQLite WAL;
 3. replace repeated linear novel lookup with indexed lookup;
 4. build persistent library/chapter index;
-5. split Telethon from web process;
-6. then tune Gunicorn workers/threads using measured workload;
+5. production-enable the implemented Telethon split after inventory;
+6. then tune Gunicorn workers/threads using measured workload and after addressing
+   the remaining process-local state;
 7. split/cache frontend static assets;
 8. introduce R2 selectively;
 9. reduce background community polling / use visibility/backoff and later push mechanisms.

@@ -1,0 +1,22 @@
+[Unit]
+Description=ArchiveDB Telegram media service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=arcdb
+Group=arcdb
+WorkingDirectory=__ARCHIVEDB_APP_DIR__
+EnvironmentFile=__ARCHIVEDB_TELEGRAM_ENV_FILE__
+ExecStart=__ARCHIVEDB_APP_DIR__/.venv/bin/gunicorn --workers 1 --threads 8 --bind 127.0.0.1:5010 --error-logfile - arcdb.telegram_service:create_configured_app()
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+KillSignal=SIGTERM
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
