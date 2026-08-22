@@ -15,8 +15,11 @@ Current confirmed production facts:
 - Persistent OCI Block Volume.
 - Cloudflare in front of the origin; current public deployment uses `workers.dev`/Cloudflare-aware origin behavior and likely Cloudflare Tunnel.
 - Local filesystem contains EPUBs, unpacked chapters/assets, metadata, caches and mutable state.
-- Telegram integration uses Telethon.
-- Current archived source contains important process-local caches, locks, rate buckets and a process-local Telegram client.
+- Telegram integration uses Telethon through a dedicated repository-side service;
+  production enablement of that split is not yet confirmed.
+- Current runtime still contains important process-local caches, locks and rate
+  buckets. The historical archived baseline also contains a process-local Telegram
+  client, but tracked `arcdb-web` no longer does.
 
 Do not assume unknown OCI details. See `docs/ARCHITECTURE.md` for confirmed vs unconfirmed facts.
 
@@ -83,6 +86,10 @@ Completed:
   separate packager process, retries/attempts/heartbeat/timeout/stale recovery,
   expiry cleanup and atomic result publication. Repository/local/CI implementation
   is complete; production service enablement is not claimed.
+- Telethon service split: web owns no client/event loop/session credentials;
+  authenticated loopback streaming is handled by a single separate service with
+  health/readiness, local bootstrap opt-in, tests and a systemd template. Repository
+  implementation is complete; production enablement is not claimed.
 
 Still pending:
 
@@ -90,7 +97,6 @@ Still pending:
 - removal of JSON writes;
 - production data/runtime cutover;
 - persistent library index;
-- Telethon service split;
 - R2/static edge migration.
 
 ## Current state ownership during Phase 3C

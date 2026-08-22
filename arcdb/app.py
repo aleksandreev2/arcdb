@@ -16,12 +16,11 @@ this exact script. It is organised into clearly separated sections:
     8c. Tag similarity & recommendations
     8d. Community (usernames, shared novels/collections, general chat)
     9.  Reader pipeline (TOC, chapters, assets)
-   10.  Telegram background client & streaming
+   10.  Telegram service link parsing
    11.  API response helpers
    12.  Routes
 """
 
-import asyncio
 import collections
 from collections import defaultdict, deque
 import csv
@@ -31,7 +30,6 @@ import json
 import logging
 import math
 import os
-import queue
 import random
 import re
 import secrets
@@ -63,8 +61,6 @@ from flask import (
 )
 from jinja2 import ChainableUndefined
 from werkzeug.security import generate_password_hash, check_password_hash
-from telethon import TelegramClient, connection
-from telethon.errors import AuthKeyUnregisteredError
 
 from arcdb.epub_io import (
     EpubLimits,
@@ -76,6 +72,7 @@ from arcdb.epub_io import (
     validate_epub_archive,
 )
 from arcdb.jobs import JobStore
+from arcdb.telegram_gateway import TelegramGateway, TelegramGatewayError
 
 # ====================================================================
 # 1. CONFIGURATION & ENVIRONMENT LOADING
@@ -111,15 +108,25 @@ if not FLASK_SECRET_KEY:
         "export it before launching. Changing this value logs out all users."
     )
 
-TELEGRAM_API_ID = _env_int("TELEGRAM_API_ID", 0)
-TELEGRAM_API_HASH = _env_str("TELEGRAM_API_HASH")
-TELEGRAM_PHONE = _env_str("TELEGRAM_PHONE")
-TELEGRAM_CONFIGURED = bool(TELEGRAM_API_ID and TELEGRAM_API_HASH and TELEGRAM_PHONE)
-if not TELEGRAM_CONFIGURED:
+TELEGRAM_SERVICE_URL = _env_str("TELEGRAM_SERVICE_URL")
+TELEGRAM_SERVICE_TOKEN = _env_str("TELEGRAM_SERVICE_TOKEN")
+TELEGRAM_SERVICE_CONNECT_TIMEOUT = _env_int("TELEGRAM_SERVICE_CONNECT_TIMEOUT", 3)
+TELEGRAM_SERVICE_READ_TIMEOUT = _env_int("TELEGRAM_SERVICE_READ_TIMEOUT", 30)
+TELEGRAM_GATEWAY = None
+if TELEGRAM_SERVICE_URL and TELEGRAM_SERVICE_TOKEN:
+    try:
+        TELEGRAM_GATEWAY = TelegramGateway(
+            TELEGRAM_SERVICE_URL,
+            TELEGRAM_SERVICE_TOKEN,
+            connect_timeout=TELEGRAM_SERVICE_CONNECT_TIMEOUT,
+            read_timeout=TELEGRAM_SERVICE_READ_TIMEOUT,
+        )
+    except ValueError as exc:
+        _warn(f"Telegram service configuration rejected: {exc}.")
+else:
     _warn(
-        "TELEGRAM_API_ID / TELEGRAM_API_HASH / TELEGRAM_PHONE are not all set - "
-        "the Telegram client will not start and downloads stay disabled until "
-        "all three are exported in the environment."
+        "TELEGRAM_SERVICE_URL / TELEGRAM_SERVICE_TOKEN are not both set - "
+        "Telegram-backed downloads stay disabled."
     )
 
 # --- Email (SMTP) for verification codes ------------------------------------
@@ -134,17 +141,7 @@ if not (SMTP_USER and SMTP_PASS):
     else:
         _warn("SMTP_USER/SMTP_PASS not set - verification codes will only print to the console.")
 
-# ---- PROXY CONFIG (MTProto). Set USE_PROXY=1 plus MTPROXY_* in the env. ----
-USE_PROXY = _env_str("USE_PROXY", "0") == "1"
-MTPROXY_SERVER = _env_str("MTPROXY_SERVER")
-MTPROXY_PORT = _env_int("MTPROXY_PORT", 443)
-MTPROXY_SECRET = _env_str("MTPROXY_SECRET")
-if USE_PROXY and not (MTPROXY_SERVER and MTPROXY_SECRET):
-    _warn("USE_PROXY=1 but MTPROXY_SERVER/MTPROXY_SECRET are missing - connecting directly.")
-    USE_PROXY = False
-
 # --- Paths -------------------------------------------------------------------
-SESSION_PATH = _env_str("SESSION_PATH", os.path.join(_BASE_DIR, "sigma_reverse_session"))
 TRANSLATED_CSV_PATH = _env_str("TRANSLATED_CSV_PATH", os.path.join(_BASE_DIR, "uploaded_novels_tracker.csv"))
 RAW_MASTER_CSV_PATH = _env_str("RAW_MASTER_CSV_PATH", "/home/ubuntu/master_library_index.csv")
 LOCAL_OUTPUT_DIR = _env_str("LOCAL_OUTPUT_DIR", "/home/ubuntu/nvidia_chat_bot/output/")
@@ -308,7 +305,6 @@ NON_CHAPTER_FILES = {
 
 TOC_MISSING_PREFIX = "MISSING||"
 MAX_GAP_FILL = 100
-DOWNLOAD_CHUNK_SIZE = 512 * 1024
 VALID_READING_STATUSES = {"none", "want_to_read", "reading", "finished"}
 LEGACY_UPLOAD_DATE = "2024-01-01"
 MAX_BULK_REMOVE_IDS = 200
@@ -3171,67 +3167,8 @@ def _extract_asset_from_epubs(base_path, rel_path):
     return None
 
 # ====================================================================
-# 10. TELEGRAM BACKGROUND CLIENT & STREAMING
+# 10. TELEGRAM SERVICE LINK PARSING
 # ====================================================================
-telethon_loop = asyncio.new_event_loop()
-client = None
-
-def run_telethon():
-    global client
-    asyncio.set_event_loop(telethon_loop)
-    client_kwargs = dict(
-        loop=telethon_loop,
-        receive_updates=False,
-        connection_retries=3,
-        request_retries=1,
-        timeout=8,
-    )
-    if USE_PROXY:
-        client_kwargs["connection"] = connection.ConnectionTcpMTProxyRandomizedIntermediate
-        client_kwargs["proxy"] = (MTPROXY_SERVER, MTPROXY_PORT, MTPROXY_SECRET)
-        print(f"[TELEGRAM] Using MTProxy proxy: {MTPROXY_SERVER}:{MTPROXY_PORT}")
-
-    client = TelegramClient(
-        SESSION_PATH, TELEGRAM_API_ID, TELEGRAM_API_HASH, **client_kwargs
-    )
-
-    async def boot_sequence():
-        try:
-            await client.start(phone=TELEGRAM_PHONE)
-            print("\n[TELEGRAM] Caching dialogs to resolve private channel IDs...")
-            await client.get_dialogs()
-            print("[TELEGRAM] Gallery proxy active.\n")
-
-            async def heartbeat():
-                while True:
-                    await asyncio.sleep(150)
-                    try:
-                        if not client.is_connected():
-                            await asyncio.wait_for(client.connect(), timeout=8.0)
-                        else:
-                            await asyncio.wait_for(client.get_me(), timeout=5.0)
-                    except AuthKeyUnregisteredError:
-                        break
-                    except Exception:
-                        pass
-            telethon_loop.create_task(heartbeat())
-        except AuthKeyUnregisteredError:
-            print("[TELEGRAM] Session key unregistered - downloads disabled.")
-
-    try:
-        telethon_loop.run_until_complete(boot_sequence())
-        telethon_loop.run_forever()
-    except Exception as exc:
-        print(f"[TELEGRAM] Background loop stopped: {exc}")
-
-if os.environ.get("ARCHIVEDB_NO_TELEGRAM"):
-    print("[TELEGRAM] ARCHIVEDB_NO_TELEGRAM set - background client disabled.")
-elif not TELEGRAM_CONFIGURED:
-    print("[TELEGRAM] Credentials not configured - downloads disabled until "
-          "TELEGRAM_API_ID/TELEGRAM_API_HASH/TELEGRAM_PHONE are exported.")
-else:
-    threading.Thread(target=run_telethon, daemon=True).start()
-
 def parse_telegram_link(tg_link):
     try:
         parts = tg_link.rstrip("/").split("/")
@@ -5092,10 +5029,7 @@ def download_file(novel_ref):
             conditional=True,
         )
 
-    # The novel does not have a local upload, so fall back to Telegram
-    if client is None:
-        return "System Booting.", 503
-
+    # The novel does not have a local upload, so use the isolated Telegram service.
     tg_link = (novel.get("raw_tg_link") if want_raw else novel.get("tg_link")) or ""
     if not tg_link:
         return "File not available.", 404
@@ -5104,21 +5038,12 @@ def download_file(novel_ref):
     if not parsed:
         return "Invalid Link.", 400
     channel_id, message_id = parsed
-
-    async def fetch_meta():
-        try:
-            return await asyncio.wait_for(client.get_messages(channel_id, ids=message_id), timeout=10.0)
-        except Exception:
-            return None
-
-    future = asyncio.run_coroutine_threadsafe(fetch_meta(), telethon_loop)
+    if TELEGRAM_GATEWAY is None:
+        return "Telegram service unavailable.", 503
     try:
-        msg = future.result(timeout=15)
-    except Exception:
-        return "Timeout fetching from Telegram.", 504
-
-    if not msg or not msg.media:
-        return "File missing from channel.", 404
+        upstream = TELEGRAM_GATEWAY.open_media(channel_id, message_id)
+    except TelegramGatewayError as exc:
+        return str(exc), exc.status_code
 
     new_count = increment_download_count(user_email, nkey)
     log_download_event(user_email, novel, tg_link, want_raw, client_ip, new_count)
@@ -5133,52 +5058,21 @@ def download_file(novel_ref):
     except Exception as exc:
         print(f"[WARN] Could not record download signal: {exc}")
 
-    filename = msg.file.name if msg.file and getattr(msg.file, "name", None) else "file.epub"
-    file_size = msg.file.size if msg.file and getattr(msg.file, "size", None) else None
-    chunk_queue = queue.Queue(maxsize=10)
-    abort_event = threading.Event()
-
-    async def download_stream():
-        try:
-            async for chunk in client.iter_download(msg.media, chunk_size=DOWNLOAD_CHUNK_SIZE):
-                if abort_event.is_set():
-                    break
-                while chunk_queue.full():
-                    if abort_event.is_set():
-                        break
-                    await asyncio.sleep(0.05)
-                if abort_event.is_set():
-                    break
-                chunk_queue.put_nowait(chunk)
-        except Exception:
-            abort_event.set()
-        finally:
-            while chunk_queue.full():
-                if abort_event.is_set():
-                    break
-                await asyncio.sleep(0.05)
-            if not abort_event.is_set():
-                chunk_queue.put_nowait(None)
-
-    asyncio.run_coroutine_threadsafe(download_stream(), telethon_loop)
-
     def generate_response():
         try:
-            while not abort_event.is_set():
-                try:
-                    chunk = chunk_queue.get(timeout=2.0)
-                    if chunk is None:
-                        break
-                    yield chunk
-                except queue.Empty:
-                    continue
-        except GeneratorExit:
-            abort_event.set()
+            yield from upstream.iter_content(chunk_size=512 * 1024)
+        finally:
+            upstream.close()
 
-    safe_filename = quote(filename)
+    safe_filename = quote(
+        _safe_upload_filename(
+            TELEGRAM_GATEWAY.response_filename(upstream), "file.epub"
+        )
+    )
     headers = {"Content-Disposition": f"attachment; filename*=UTF-8''{safe_filename}"}
-    if file_size:
-        headers["Content-Length"] = str(file_size)
+    file_size = TELEGRAM_GATEWAY.response_length(upstream)
+    if file_size is not None:
+        headers["Content-Length"] = file_size
     return Response(generate_response(), mimetype="application/epub+zip", headers=headers)
 
 # ====================================================================

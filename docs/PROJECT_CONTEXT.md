@@ -32,7 +32,9 @@ Strongly indicated by archived code:
 - synchronous packaging/ZIP work in the archived production source (the tracked
   repository revision now enqueues a separate worker);
 - process-local rate-limit state/caches/locks;
-- Telethon started from the application process.
+- Telethon started from the application process in the archived baseline. The
+  tracked repository now uses a separate loopback service; production enablement is
+  not confirmed.
 
 Unknown until production inventory is supplied:
 
@@ -211,7 +213,8 @@ Bounded shadow-log audit (one process log per invocation):
 
 1. JSON whole-file state rewrites.
 2. Important state/caches/rate limits are process-local.
-3. Telethon starts inside the application process.
+3. Process-local caches/rate controls still constrain web scaling; the repository
+   Telethon split is complete but not yet production-enabled.
 4. Library requests sort/filter a full in-memory list.
 5. Directory scans/`os.walk` are used for chapter/library discovery.
 6. Novel lookup uses repeated linear scans.
@@ -249,8 +252,9 @@ Avoid a full rewrite. Keep Flask and preserve API/UI behavior while extracting r
 6. Stop JSON writes domain-by-domain; preserve legacy/export rollback paths.
 7. Enable the already implemented persistent async packager only after inventory
    confirms its Block Volume/env/systemd paths.
-8. Split Telethon into its own service (next independent repository-side stage).
-9. Build the persistent index and later frontend/R2 optimizations.
+8. Inventory-gate and operationally enable the already implemented Telethon split.
+9. Build the persistent library/chapter index (next independent repository stage),
+   then later frontend/R2 optimizations.
 
 ## Where to read next
 
@@ -260,6 +264,7 @@ Avoid a full rewrite. Keep Flask and preserve API/UI behavior while extracting r
 - `docs/PRODUCTION_SAFETY.md` — backup/cutover/rollback rules.
 - `docs/BACKUP_RESTORE.md` — executable migration, backup, restore and retention runbook.
 - `docs/ASYNC_PACKAGER.md` — queue API, worker operation, recovery and rollout.
+- `docs/TELEGRAM_SERVICE.md` — isolated client boundary, rollout and rollback.
 - `docs/DATA_MODEL.md` — files and SQLite ownership.
 - `docs/ROADMAP.md` — implementation sequence.
 - `docs/DECISIONS.md` — why these choices were made.

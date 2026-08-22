@@ -10,6 +10,7 @@ venv/
 .env.*
 !.env.example
 !.env.local.example
+!.env.telegram.example
 
 # Local runtime data
 data/

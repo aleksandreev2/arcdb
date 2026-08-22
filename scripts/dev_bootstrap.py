@@ -362,6 +362,7 @@ def run_server(py: Path, child_env: dict[str, str], entrypoint: Path) -> int:
 
     proc = subprocess.Popen([str(py), str(entrypoint)], cwd=ROOT, env=child_env)
     packager = None
+    telegram = None
     if child_env.get("ARCHIVEDB_START_PACKAGER", "1") == "1":
         packager = subprocess.Popen(
             [str(py), str(ROOT / "scripts" / "run_packager.py")],
@@ -369,6 +370,13 @@ def run_server(py: Path, child_env: dict[str, str], entrypoint: Path) -> int:
             env=child_env,
         )
         print(f"[ArchiveDB] Packager worker PID: {packager.pid}")
+    if child_env.get("ARCHIVEDB_START_TELEGRAM", "0") == "1":
+        telegram = subprocess.Popen(
+            [str(py), str(ROOT / "scripts" / "run_telegram.py")],
+            cwd=ROOT,
+            env=child_env,
+        )
+        print(f"[ArchiveDB] Telegram service PID: {telegram.pid}")
 
     def stop_process(process: subprocess.Popen | None) -> None:
         if process is None or process.poll() is not None:
@@ -386,6 +394,9 @@ def run_server(py: Path, child_env: dict[str, str], entrypoint: Path) -> int:
             if packager is not None and packager.poll() is not None:
                 stop_process(proc)
                 raise RuntimeError("The local EPUB packager worker stopped unexpectedly.")
+            if telegram is not None and telegram.poll() is not None:
+                stop_process(proc)
+                raise RuntimeError("The local Telegram service stopped unexpectedly.")
             time.sleep(0.25)
         return int(proc.returncode or 0)
     except KeyboardInterrupt:
@@ -393,6 +404,7 @@ def run_server(py: Path, child_env: dict[str, str], entrypoint: Path) -> int:
         return int(proc.returncode or 0)
     finally:
         stop_process(packager)
+        stop_process(telegram)
 
 
 def main() -> int:

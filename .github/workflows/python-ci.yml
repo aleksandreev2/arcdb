@@ -26,6 +26,8 @@ jobs:
           arcdb/epub_io.py
           arcdb/jobs.py
           arcdb/package_worker.py
+          arcdb/telegram_gateway.py
+          arcdb/telegram_service.py
           arcdb/storage/sqlite_db.py
           arcdb/storage/legacy_import.py
           arcdb/storage/safe_migration.py
@@ -42,6 +44,7 @@ jobs:
           scripts/benchmark_epub_io.py
           scripts/benchmark_job_queue.py
           scripts/run_packager.py
+          scripts/run_telegram.py
           scripts/migrate_state_to_sqlite.py
           scripts/verify_migration_backup.py
           scripts/export_sqlite_to_legacy.py
@@ -67,7 +70,9 @@ jobs:
           tests/test_runtime_metadata.py
           tests/test_epub_io.py
           tests/test_jobs.py
+          tests/test_telegram_service.py
           tests/test_tracked_runtime.py
+          tests/test_telegram_service.py
           tests/test_dev_seed.py
           tests/test_production_inventory.py
           tests/runtime_collection_workflow.py

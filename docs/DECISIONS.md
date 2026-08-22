@@ -448,3 +448,32 @@ EPUB finalization can outlive an HTTP request and must survive web/worker restar
 SQLite provides sufficient single-VM claim and recovery semantics without adding
 Redis/Celery. Separating operational jobs from user-state schema v3 avoids weakening
 the candidate-first migration invariant or requiring a risky in-place schema bump.
+
+## ADR-026 — Isolate Telethon behind authenticated loopback streaming
+
+Status: accepted and implemented for repository/local/CI runtime.
+
+Decision:
+
+- remove Telethon imports, client creation, event-loop ownership and Telegram API
+  credentials from `arcdb-web`;
+- run exactly one `arcdb-telegram` worker that owns the protected session;
+- preserve the authenticated public download route and stream its Telegram fallback
+  through token-authenticated loopback HTTP;
+- reject non-loopback web configuration and redirects so the shared token cannot be
+  forwarded to an external host;
+- keep the service token distinct from the Flask secret and keep Telegram API/session
+  values in a separate private environment;
+- expose payload-free process health/readiness and fail Telegram-backed downloads
+  closed without taking down local library/reader flows;
+- keep production installation inventory-gated and retain the previous revision and
+  protected session backup for rollout rollback.
+
+Reasoning:
+
+Starting Telethon at Flask import creates one client per Gunicorn worker and couples
+web restarts to a long-lived Telegram session. A loopback streaming boundary preserves
+constant-memory downloads and the existing browser API while giving the client a
+single lifecycle. A persistent queue is unnecessary for interactive media streams;
+the service owns no user-state migration and can fail independently with a bounded
+503 response.
