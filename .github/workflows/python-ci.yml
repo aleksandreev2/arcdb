@@ -89,6 +89,7 @@ jobs:
           tests/test_dev_seed.py
           tests/test_production_inventory.py
           tests/runtime_collection_workflow.py
+          tests/runtime_csp_workflow.py
           tests/runtime_metadata_workflow.py
           tests/runtime_epub_workflow.py
           tests/runtime_auth_workflow.py
@@ -122,10 +123,11 @@ jobs:
           }
           trap cleanup EXIT
 
+          READY=0
           for attempt in $(seq 1 120); do
             if curl --fail --silent --show-error http://127.0.0.1:5004/login >/dev/null; then
-              echo "ArchiveDB local bootstrap smoke test passed."
-              exit 0
+              READY=1
+              break
             fi
             if ! kill -0 "$BOOT_PID" 2>/dev/null; then
               echo "Bootstrap exited before the server became ready."
@@ -135,9 +137,14 @@ jobs:
             sleep 1
           done
 
-          echo "Server did not become ready in time."
-          cat server.log
-          exit 1
+          if [[ "$READY" != "1" ]]; then
+            echo "Server did not become ready in time."
+            cat server.log
+            exit 1
+          fi
+
+          PYTHONPATH=. .venv/bin/python tests/runtime_csp_workflow.py
+          echo "ArchiveDB local bootstrap smoke test passed."
 
   dev-seed-smoke:
     runs-on: ubuntu-latest

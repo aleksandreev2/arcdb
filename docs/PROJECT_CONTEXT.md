@@ -122,6 +122,9 @@ Implemented in repository:
   request timing events with a p50/p95/p99 summarizer;
 - central Origin/Referer enforcement for every state-changing HTTP method and
   POST-only logout; exact production origins remain inventory-gated;
+- per-response nonce-only script CSP with script attributes/CDN fallback disabled;
+  shared auth CSS is a fingerprinted immutable local asset, while the remaining
+  large inline style split stays planned;
 - directly tracked behavior-compatible Flask runtime/templates; bootstrap and runtime CI no longer depend on baseline materialization or text overlays.
 - upload streams are atomically published with one final flush/fsync; EPUB ingestion
   and packaging enforce bounded structure/CRC/path/link/duplicate/size/ratio checks,

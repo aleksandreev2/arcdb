@@ -221,7 +221,7 @@
 
 <div class="toast-stack" id="toastStack" aria-live="polite"></div>
 
-<script>
+<script nonce="{{ g.csp_nonce }}">
 'use strict';
 (function () {
   let USERNAME = {{ username | tojson }};
@@ -321,7 +321,7 @@
   function shareCardHTML(s) {
     const isNovel = s.type === 'novel';
     const cover = s.cover
-      ? `<img src="${esc(s.cover)}" loading="lazy" alt="" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'ph'}))">`
+      ? `<img class="share-cover-image" src="${esc(s.cover)}" loading="lazy" alt="">`
       : `<div class="ph"><svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></div>`;
     const title = isNovel
       ? `<a href="/#novel=${encodeURIComponent(s.key)}" title="Open in library">${esc(s.title)}</a>`
@@ -348,6 +348,14 @@
       ${s.mine ? `<button class="icon-del" data-del-share="${s.id}" title="Delete" aria-label="Delete share">${TRASH}</button>` : ''}
     </article>`;
   }
+
+  $('shareList').addEventListener('error', event => {
+    const image = event.target;
+    if (!(image instanceof HTMLImageElement) || !image.classList.contains('share-cover-image')) return;
+    const placeholder = document.createElement('div');
+    placeholder.className = 'ph';
+    image.replaceWith(placeholder);
+  }, true);
 
   function renderShares(shares) {
     const box = $('shareList');

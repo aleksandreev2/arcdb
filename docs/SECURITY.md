@@ -93,8 +93,30 @@ metadata workflow uploads a pending cover as a normal user, verifies owner/admin
 access and unrelated-user denial, approves it, then verifies authenticated library
 access and complete legacy/SQLite parity.
 
+## Browser script policy
+
+Status: implemented for repository/local/CI runtime. Production header observation
+remains part of the reconciled rollout.
+
+Every response receives a fresh unpredictable CSP nonce. All tracked executable
+inline blocks carry that request nonce; `script-src` permits only self-hosted scripts
+and the nonce and no longer contains `unsafe-inline` or a CDN. `script-src-attr
+'none'` blocks HTML event-handler attributes. Existing image error/tag actions were
+moved to `addEventListener`, and the unused missing-JSZip/CDN fallback was removed.
+
+The shared CSS for all five auth pages is now a fingerprinted local static asset.
+Requests carrying its content-hash version receive a one-year immutable cache
+header. Large gallery/reader/community CSS remains inline under `style-src
+'unsafe-inline'`; extracting it without a redesign and removing that final style
+exception belongs to the later static-frontend phase, not this executable-script
+security boundary.
+
+Structural tests require a nonce on every tracked script tag, reject inline event
+attributes/CDN fallback, verify the CSS fingerprint and ensure the policy contains
+`script-src-attr 'none'`. Runtime smoke verifies the rendered nonce/header match and
+immutable fingerprinted asset response.
+
 ## Remaining Phase 11 work
 
-- tighten CSP after inline CSS/JS is split;
 - inventory-gate origin-network restrictions, secret ownership/rotation and admin
   audit retention.

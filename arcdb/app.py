@@ -372,6 +372,7 @@ for _message in _STARTUP_WARNINGS:
 def begin_request_observation():
     g.request_id = uuid.uuid4().hex
     g.request_started_at = time.perf_counter()
+    g.csp_nonce = secrets.token_urlsafe(24)
 
 @app.before_request
 def enforce_state_change_origin():
@@ -497,25 +498,36 @@ def log_request(response):
 
     return response
 
-_CSP = (
-    "default-src 'self'; "
-    "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
-    "style-src 'self' 'unsafe-inline'; "
-    "img-src * data: blob:; "
-    "font-src 'self' data:; "
-    "connect-src 'self' https://*.novelpia.com https://images.novelpia.com https://cdnjs.cloudflare.com; "
-    "object-src 'none'; "
-    "frame-ancestors 'none'; "
-    "base-uri 'self'; "
-    "form-action 'self'"
-)
+def _content_security_policy():
+    nonce = getattr(g, "csp_nonce", "")
+    return (
+        "default-src 'self'; "
+        f"script-src 'self' 'nonce-{nonce}'; "
+        "script-src-attr 'none'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src * data: blob:; "
+        "font-src 'self' data:; "
+        "connect-src 'self' https://*.novelpia.com https://images.novelpia.com; "
+        "object-src 'none'; "
+        "frame-src 'none'; "
+        "worker-src 'none'; "
+        "manifest-src 'self'; "
+        "frame-ancestors 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'"
+    )
 
 @app.after_request
 def set_security_headers(response):
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "DENY")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-    response.headers.setdefault("Content-Security-Policy", _CSP)
+    response.headers["Content-Security-Policy"] = _content_security_policy()
+    asset_version = request.args.get("v", "")
+    if request.path.startswith("/static/") and re.fullmatch(
+        r"[0-9a-f]{16,64}", asset_version
+    ):
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
     return response
 
 # ====================================================================
