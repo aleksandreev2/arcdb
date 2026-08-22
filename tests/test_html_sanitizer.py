@@ -1,11 +1,27 @@
 from __future__ import annotations
 
 import unittest
+import zipfile
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from arcdb.html_sanitizer import sanitize_epub_html
+from tests.make_seed_fixtures import make_epub
 
 
 class EpubHTMLSanitizerTests(unittest.TestCase):
+    def test_runtime_reader_seed_contains_hostile_chapter(self) -> None:
+        with TemporaryDirectory() as temporary:
+            epub = Path(temporary) / (
+                "Я_стал_куратором_охотников_S-ранга_главы_1-123_"
+                "с_иллюстрациями_FIXED.epub"
+            )
+            make_epub(epub, epub.stem)
+            with zipfile.ZipFile(epub) as archive:
+                chapter = archive.read("OEBPS/chapter1.xhtml").decode("utf-8")
+        self.assertIn("window.arcdbUnsafe", chapter)
+        self.assertIn("safe after void element", chapter)
+
     def test_preserves_normal_epub_structure_and_reader_assets(self) -> None:
         source = (
             '<section epub:type="chapter" class="main" lang="en">'
