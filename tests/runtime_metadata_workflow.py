@@ -11,6 +11,9 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from flask import Flask
+from flask.sessions import SecureCookieSessionInterface
+
 from arcdb.storage.state_parity import verify_metadata_domains_parity
 
 
@@ -22,12 +25,31 @@ DB_PATH = ROOT / "data" / "arcdb.sqlite3"
 TEST_EMAIL = "phase2c-reader@example.test"
 
 
+def fixture_secret() -> str:
+    for raw_line in (ROOT / ".env").read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        if key.strip() == "FLASK_SECRET_KEY":
+            return value.strip().strip('"').strip("'")
+    raise AssertionError("FLASK_SECRET_KEY is missing from the CI fixture environment.")
+
+
 class ApiClient:
     def __init__(self) -> None:
         cookies = http.cookiejar.CookieJar()
         self.opener = urllib.request.build_opener(
             urllib.request.HTTPCookieProcessor(cookies)
         )
+
+    def authenticate_fixture(self, email: str) -> None:
+        fixture_app = Flask("arcdb-metadata-workflow")
+        fixture_app.secret_key = fixture_secret()
+        serializer = SecureCookieSessionInterface().get_signing_serializer(fixture_app)
+        assert serializer is not None
+        cookie = serializer.dumps({"user_email": email})
+        self.opener.addheaders = [("Cookie", f"session={cookie}")]
 
     def request(
         self,
@@ -102,6 +124,7 @@ class ApiClient:
         file_field: str,
         filename: str,
         file_bytes: bytes,
+        cover_bytes: bytes | None = None,
     ) -> dict[str, Any]:
         boundary = "----ArchiveDBPhase2C" + uuid.uuid4().hex
         chunks: list[bytes] = []
@@ -124,9 +147,19 @@ class ApiClient:
                 b"Content-Type: application/epub+zip\r\n\r\n",
                 file_bytes,
                 b"\r\n",
-                f"--{boundary}--\r\n".encode(),
             ]
         )
+        if cover_bytes is not None:
+            chunks.extend(
+                [
+                    f"--{boundary}\r\n".encode(),
+                    b'Content-Disposition: form-data; name="cover"; filename="cover.png"\r\n',
+                    b"Content-Type: image/png\r\n\r\n",
+                    cover_bytes,
+                    b"\r\n",
+                ]
+            )
+        chunks.append(f"--{boundary}--\r\n".encode())
         body = self.request(
             path,
             data=b"".join(chunks),
@@ -186,7 +219,11 @@ def main() -> int:
         (path for path in (ROOT / "data" / "batched_epubs").glob("*.epub")),
         key=lambda path: path.stat().st_size,
     )
-    uploaded = client.multipart(
+    uploader = ApiClient()
+    uploader.authenticate_fixture("reader1@arcdb.local")
+    stranger = ApiClient()
+    stranger.authenticate_fixture("reader2@arcdb.local")
+    uploaded = uploader.multipart(
         "/api/upload_novel",
         {
             "title_en": "Phase 2C upload",
@@ -198,8 +235,13 @@ def main() -> int:
         file_field="raw_epub",
         filename="phase2c.epub",
         file_bytes=fixture.read_bytes(),
+        cover_bytes=b"\x89PNG\r\n\x1a\nfixture",
     )
     upload_id = str(uploaded["id"])
+    cover_url = f"/api/upload/{urllib.parse.quote(upload_id, safe='')}/asset/cover"
+    uploader.request(cover_url)
+    client.request(cover_url)
+    stranger.request(cover_url, expected_status=404)
     pending_counts = verify_metadata_parity()
     assert pending_counts["uploads"] == 1, pending_counts
 
@@ -212,6 +254,7 @@ def main() -> int:
     )
     assert approved_library["total"] == 1, approved_library
     assert str(approved_library["novels"][0]["id"]) == upload_id
+    stranger.request(cover_url)
     duplicate_approve = client.form(
         "/admin/access", {"action": "approve_upload", "upload_id": upload_id}
     )
