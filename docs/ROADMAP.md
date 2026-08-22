@@ -183,20 +183,27 @@ Status: completed in repository/local/CI runtime.
 - validate uploaded package images by signature and bind package sessions to the
   authenticated creator;
 - atomically publish extracted directories and final EPUBs, cleaning partial files;
-- retain existing upload/package API response contracts.
+- retain init/upload/download routes; change finalize deliberately to HTTP 202 plus
+  a persistent job id in Phase 6.
 
-The package finalize endpoint is intentionally still synchronous in this phase.
-Phase 6 moves the same bounded implementation behind persistent jobs.
+The bounded implementation is reused by Phase 6's separate worker; the Flask
+finalize route no longer invokes it directly.
 
 ## Phase 6 — async packaging jobs
 
-- create persistent jobs representation;
-- POST returns `202 + job_id`;
-- packager worker processes queued jobs;
-- progress/status endpoint;
-- output stored safely;
-- retries/cancellation/expiry cleanup;
-- move heavyweight finalization out of HTTP request lifecycle.
+Repository/local/CI implementation completed:
+
+- dedicated SQLite WAL queue, separate from state schema v3;
+- finalize and `POST /api/jobs/package` return `202 + job_id`;
+- authenticated status/cancel endpoints and frontend polling;
+- separate `scripts/run_packager.py` process with atomic claim and publication;
+- persistent attempts/progress/heartbeat/timeout/cancellation;
+- bounded retries, stale-worker restart recovery and expiry cleanup;
+- local bootstrap process separation and a production systemd template;
+- real web -> queue -> worker -> status -> download CI coverage.
+
+Production enablement remains inventory/operator-gated; repository tests do not
+prove the unit or its Block Volume paths are live.
 
 ## Phase 7 — split Telethon
 
@@ -274,14 +281,15 @@ After process-local state is removed/split:
 3. bounded SQLite read canary
 4. SQLite primary reads
 5. stop legacy writes domain-by-domain
-6. async packager
-7. Telethon split
-8. persistent library index/frontend split
+6. Telethon split
+7. persistent library index/frontend split
+8. security/observability and measured performance work
 9. R2/Cloudflare optimization
 ```
 
-Without live-production inputs, Phase 6 is the next independent repository-side
-stage; production read-cutover steps remain operator-gated rather than guessed.
+Without live-production inputs, Phase 7 is the next independent repository-side
+stage; production read-cutover and packager service enablement remain operator-gated
+rather than guessed.
 
 ## Explicit non-goals for now
 

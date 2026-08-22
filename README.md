@@ -20,6 +20,7 @@ Read these before architecture/storage changes:
 9. `docs/ROADMAP.md` — ordered implementation plan.
 10. `docs/DECISIONS.md` — architectural decisions and rationale.
 11. `docs/PERFORMANCE_BASELINE.md` — reproducible before/after measurements.
+12. `docs/ASYNC_PACKAGER.md` — persistent queue, worker, API and rollout procedure.
 
 Material architectural changes should update the relevant docs in the same PR.
 
@@ -226,8 +227,14 @@ ratios. Extraction and final EPUB publication are atomic.
 Client-assisted package sessions are bound to the authenticated creator, expire,
 limit active sessions/files/bytes and accept only signature-validated raster images
 for URLs discovered in that session's base EPUB. Finalization retains the existing
-API contract but streams non-text ZIP entries; it remains synchronous until the
-persistent-jobs phase.
+route but now returns HTTP 202 with a persistent job id. The frontend polls the
+owner-only status endpoint while `scripts/run_packager.py` streams and atomically
+publishes the result in a separate process. Retry, heartbeat, timeout, cancellation,
+stale restart recovery and expiry cleanup are stored in a dedicated SQLite WAL queue.
+
+Local `start.bat` launches web and packager as separate child processes. Production
+service setup remains inventory-gated; see `docs/ASYNC_PACKAGER.md` and the systemd
+template under `deploy/systemd/`.
 
 All limits are explicit in `.env.example` and `.env.local.example`. Reproduce the
 whole-archive versus streaming memory/time comparison with:

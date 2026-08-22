@@ -2694,6 +2694,27 @@ async function triggerDirectBrowserDownload(blob, filename) {
   }, 3000);
 }
 
+async function waitForPackageJob(statusUrl) {
+  const deadline = Date.now() + (16 * 60 * 1000);
+  while (Date.now() < deadline) {
+    const response = await fetch(statusUrl, { credentials: 'same-origin' });
+    if (!response.ok) throw new Error('Package job status is unavailable');
+    const job = await response.json();
+    if (job.state === 'done') return job;
+    if (job.state === 'failed') throw new Error(job.error?.message || 'Package job failed');
+    if (job.state === 'cancelled') throw new Error('Package job was cancelled');
+    const progress = Math.max(90, Math.min(99, Number(job.progress || 0)));
+    updateDownloadModal(
+      'Packaging EPUB',
+      progress,
+      `Packaging in background… ${job.progress || 0}%`,
+      `Attempt ${job.attempts || 0} of ${job.max_attempts || 1}`
+    );
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+  throw new Error('Package job timed out');
+}
+
 async function handleEpubDownload(downloadUrl, targetEl) {
   const urlParts = (downloadUrl || '').split('/download/');
   const novelRef = (urlParts[1] || '').split('?')[0];
@@ -2701,6 +2722,7 @@ async function handleEpubDownload(downloadUrl, targetEl) {
   const isRaw = downloadUrl.includes('type=raw');
 
   let defaultName = 'novel.epub';
+  let activeJobId = '';
   try {
     if (novelKey && state.novelsByKey && state.novelsByKey[novelKey]) {
       const n = state.novelsByKey[novelKey];
@@ -2785,11 +2807,12 @@ async function handleEpubDownload(downloadUrl, targetEl) {
 
       if (addedToBatch > 0) {
         formData.append('url_mapping', JSON.stringify(urlMapping));
-        await fetch(`/api/epub_package/upload_batch/${sessionId}`, {
+        const uploadResponse = await fetch(`/api/epub_package/upload_batch/${sessionId}`, {
           method: 'POST',
           credentials: 'same-origin',
           body: formData
         });
+        if (!uploadResponse.ok) throw new Error('Image batch upload failed');
       }
     }
 
@@ -2802,7 +2825,12 @@ async function handleEpubDownload(downloadUrl, targetEl) {
     });
 
     if (!finalizeRes.ok) throw new Error('Finalization failed');
-    const finData = await finalizeRes.json();
+    const queuedJob = await finalizeRes.json();
+    activeJobId = queuedJob.job_id || '';
+    const finData = queuedJob.state === 'done'
+      ? queuedJob
+      : await waitForPackageJob(queuedJob.status_url);
+    activeJobId = '';
 
     updateDownloadModal('Download Ready', 100, 'EPUB packaged successfully!', 'Saving to your device');
     setTimeout(() => {
@@ -2813,6 +2841,13 @@ async function handleEpubDownload(downloadUrl, targetEl) {
 
   } catch (err) {
     console.error('Packaging error:', err);
+    if (activeJobId) {
+      fetch(`/api/jobs/${activeJobId}/cancel`, {
+        method: 'POST',
+        credentials: 'same-origin',
+        keepalive: true
+      }).catch(() => {});
+    }
     closeDownloadModal();
     toast('Image packaging failed — starting direct download', 'error');
     window.location.href = downloadUrl;

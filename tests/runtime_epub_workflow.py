@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -156,9 +157,30 @@ def main() -> int:
     )
     assert "not part of this session" in invalid["error"], invalid
 
-    finalized = owner.json(f"/api/epub_package/finalize/{session_id}", {})
-    assert finalized["download_url"].endswith(session_id), finalized
-    epub_bytes, content_type = owner.request(finalized["download_url"])
+    queued = owner.json(
+        f"/api/epub_package/finalize/{session_id}", {}, expected_status=202
+    )
+    assert queued["state"] in {"queued", "processing", "done"}, queued
+    job_id = str(queued["job_id"])
+    other_user.json(f"/api/jobs/{job_id}", expected_status=404)
+
+    frozen = owner.multipart(
+        f"/api/epub_package/upload_batch/{session_id}",
+        mapping={"image_1": "https://not-in-session.example/image.png"},
+        expected_status=409,
+    )
+    assert "already finalized" in frozen["error"], frozen
+
+    deadline = time.monotonic() + 30
+    completed = queued
+    while completed["state"] not in {"done", "failed", "cancelled"}:
+        if time.monotonic() >= deadline:
+            raise AssertionError(f"Package job did not finish: {completed}")
+        time.sleep(0.1)
+        completed = owner.json(f"/api/jobs/{job_id}")
+    assert completed["state"] == "done", completed
+    assert completed["download_url"].endswith(session_id), completed
+    epub_bytes, content_type = owner.request(completed["download_url"])
     assert content_type == "application/epub+zip", content_type
 
     with tempfile.TemporaryDirectory() as tmp:

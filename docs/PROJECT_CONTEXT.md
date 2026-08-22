@@ -29,7 +29,8 @@ Strongly indicated by archived code:
 - Cloudflare Tunnel/Cloudflare-aware origin handling;
 - local JSON/CSV application state;
 - local EPUB files and unpacked reader trees;
-- synchronous packaging/ZIP work in request handlers;
+- synchronous packaging/ZIP work in the archived production source (the tracked
+  repository revision now enqueues a separate worker);
 - process-local rate-limit state/caches/locks;
 - Telethon started from the application process.
 
@@ -209,15 +210,14 @@ Bounded shadow-log audit (one process log per invocation):
 ## Important source problems already identified
 
 1. JSON whole-file state rewrites.
-2. Packaging work still runs synchronously inside HTTP requests, although its file and memory I/O is now bounded/streamed.
-3. Important state/caches/rate limits are process-local.
-4. Telethon starts inside the application process.
-5. Library requests sort/filter a full in-memory list.
-6. Directory scans/`os.walk` are used for chapter/library discovery.
-7. Novel lookup uses repeated linear scans.
-8. Frontend HTML files contain large inline CSS/JS.
-9. Community uses frequent polling.
-10. User EPUB sanitization uses regex-style HTML cleaning rather than a robust allowlist parser.
+2. Important state/caches/rate limits are process-local.
+3. Telethon starts inside the application process.
+4. Library requests sort/filter a full in-memory list.
+5. Directory scans/`os.walk` are used for chapter/library discovery.
+6. Novel lookup uses repeated linear scans.
+7. Frontend HTML files contain large inline CSS/JS.
+8. Community uses frequent polling.
+9. User EPUB sanitization uses regex-style HTML cleaning rather than a robust allowlist parser.
 11. State-changing routes need a systematic CSRF/same-origin review.
 
 ## Target architecture
@@ -247,8 +247,9 @@ Avoid a full rewrite. Keep Flask and preserve API/UI behavior while extracting r
 4. Run a separate bounded SQLite-read canary with tested rollback to `legacy`.
 5. Make SQLite primary read source only after stable observation.
 6. Stop JSON writes domain-by-domain; preserve legacy/export rollback paths.
-7. Move the now-bounded packaging implementation to persistent async jobs.
-8. Split Telethon into its own service.
+7. Enable the already implemented persistent async packager only after inventory
+   confirms its Block Volume/env/systemd paths.
+8. Split Telethon into its own service (next independent repository-side stage).
 9. Build the persistent index and later frontend/R2 optimizations.
 
 ## Where to read next
@@ -258,6 +259,7 @@ Avoid a full rewrite. Keep Flask and preserve API/UI behavior while extracting r
 - `docs/STORAGE_MIGRATION.md` — migration phases and runtime flags.
 - `docs/PRODUCTION_SAFETY.md` — backup/cutover/rollback rules.
 - `docs/BACKUP_RESTORE.md` — executable migration, backup, restore and retention runbook.
+- `docs/ASYNC_PACKAGER.md` — queue API, worker operation, recovery and rollout.
 - `docs/DATA_MODEL.md` — files and SQLite ownership.
 - `docs/ROADMAP.md` — implementation sequence.
 - `docs/DECISIONS.md` — why these choices were made.

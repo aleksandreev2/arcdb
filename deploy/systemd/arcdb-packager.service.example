@@ -1,0 +1,21 @@
+[Unit]
+Description=ArchiveDB EPUB packager worker
+After=network.target
+
+[Service]
+Type=simple
+User=arcdb
+Group=arcdb
+WorkingDirectory=__ARCHIVEDB_APP_DIR__
+EnvironmentFile=__ARCHIVEDB_ENV_FILE__
+ExecStart=__ARCHIVEDB_APP_DIR__/.venv/bin/python scripts/run_packager.py
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+KillSignal=SIGTERM
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
