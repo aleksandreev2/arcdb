@@ -115,6 +115,7 @@ Implemented in repository:
 - read-only host discovery plus explicit-path structured production inventory and materialized-baseline reconciliation, with separate private and path-free reports.
 - WAL-aware SQLite online backup with SHA-256 manifest, database integrity checks, temporary runtime restore verification and safe new-target-only restore tooling.
 - directly tracked behavior-compatible Flask runtime/templates; bootstrap and runtime CI no longer depend on baseline materialization or text overlays.
+- upload streams are atomically published with one final flush/fsync; EPUB ingestion and packaging enforce bounded structure/CRC/path/link/duplicate/size/ratio checks, atomic extraction and owner-limited package sessions; finalization streams archive entries instead of retaining the complete archive in RAM.
 
 SQLite is **not** the default or production read source. Phase 3 now exposes `STATE_READ_BACKEND=legacy|sqlite`; local/CI can run the same authenticated API flows against both backends, while `legacy` remains default. Phase 3B adds `STATE_READ_SHADOW_COMPARE=1` for legacy-served requests: SQLite is read only for equality checking and payload-free match/mismatch/error events, so non-strict observation cannot replace or damage the authoritative response.
 
@@ -208,19 +209,16 @@ Bounded shadow-log audit (one process log per invocation):
 ## Important source problems already identified
 
 1. JSON whole-file state rewrites.
-2. Upload loop fsyncs repeatedly instead of once after sequential write.
-3. EPUB finalization can load the complete archive and every entry into RAM.
-4. Packaging work runs synchronously inside HTTP requests.
-5. Important state/caches/rate limits are process-local.
-6. Telethon starts inside the application process.
-7. Library requests sort/filter a full in-memory list.
-8. Directory scans/`os.walk` are used for chapter/library discovery.
-9. Novel lookup uses repeated linear scans.
-10. Frontend HTML files contain large inline CSS/JS.
-11. Community uses frequent polling.
-12. Current large-upload constraints can conflict between Flask and Cloudflare.
-13. User EPUB sanitization uses regex-style HTML cleaning rather than a robust allowlist parser.
-14. State-changing routes need a systematic CSRF/same-origin review.
+2. Packaging work still runs synchronously inside HTTP requests, although its file and memory I/O is now bounded/streamed.
+3. Important state/caches/rate limits are process-local.
+4. Telethon starts inside the application process.
+5. Library requests sort/filter a full in-memory list.
+6. Directory scans/`os.walk` are used for chapter/library discovery.
+7. Novel lookup uses repeated linear scans.
+8. Frontend HTML files contain large inline CSS/JS.
+9. Community uses frequent polling.
+10. User EPUB sanitization uses regex-style HTML cleaning rather than a robust allowlist parser.
+11. State-changing routes need a systematic CSRF/same-origin review.
 
 ## Target architecture
 
@@ -249,10 +247,9 @@ Avoid a full rewrite. Keep Flask and preserve API/UI behavior while extracting r
 4. Run a separate bounded SQLite-read canary with tested rollback to `legacy`.
 5. Make SQLite primary read source only after stable observation.
 6. Stop JSON writes domain-by-domain; preserve legacy/export rollback paths.
-7. Optimize upload fsync and EPUB streaming.
-8. Move packaging to async jobs.
-9. Split Telethon into its own service.
-10. Build the persistent index and later frontend/R2 optimizations.
+7. Move the now-bounded packaging implementation to persistent async jobs.
+8. Split Telethon into its own service.
+9. Build the persistent index and later frontend/R2 optimizations.
 
 ## Where to read next
 

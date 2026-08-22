@@ -394,3 +394,31 @@ import (with trailing whitespace normalized only) keeps current API/UI behavior 
 making subsequent I/O, security, jobs and process separation changes normal
 reviewable Git edits. Keeping the original verified bundle preserves provenance
 without making it a production or development build dependency.
+
+## ADR-024 — Bound and atomically publish untrusted EPUB I/O
+
+Status: accepted and implemented for repository/local/CI runtime.
+
+Decision:
+
+- write uploads sequentially to sibling temporary files, flush/fsync once, then
+  atomically replace the destination;
+- validate EPUB structure, XML declarations, CRC/content reads, canonical paths,
+  file types, duplicates/collisions, entry counts/sizes, expanded total and
+  compression ratio before publication;
+- extract into a fresh sibling directory and rename it only after every bounded
+  entry succeeds;
+- stream package entries and reader asset recovery instead of using `ZipFile.read`
+  for large binary content;
+- restrict package images by signature and configurable per-file/session limits;
+- bind package sessions to their authenticated creator and expire them after a
+  bounded lifetime;
+- keep package endpoints synchronous until the separate persistent-jobs phase.
+
+Reasoning:
+
+Filename extensions and ZIP central-directory metadata alone do not protect against
+traversal, link abuse, duplicate cross-platform paths, decompression bombs, damaged
+content or unbounded memory. Atomic temporary publication keeps partial uploads,
+extractions and final EPUBs out of live paths. The synchronous API remains compatible
+while the reusable bounded implementation becomes safe to move into a worker.
