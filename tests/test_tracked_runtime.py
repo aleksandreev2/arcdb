@@ -212,6 +212,12 @@ class TrackedRuntimeSourceTests(unittest.TestCase):
         self.assertNotIn("JSZip", combined)
         self.assertNotIn("cdnjs.cloudflare.com", combined)
 
+        parity = (ROOT / "tests" / "runtime_read_parity.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("<per-response-csp-nonce>", parity)
+        self.assertIn("normalized(control_result) == normalized(candidate_result)", parity)
+
         auth_css = ROOT / "arcdb" / "static" / "css" / "auth.css"
         version = hashlib.sha256(auth_css.read_bytes()).hexdigest()[:16]
         expected_link = f'/static/css/auth.css?v={version}'

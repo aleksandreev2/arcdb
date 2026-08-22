@@ -3,6 +3,7 @@ from __future__ import annotations
 import http.cookiejar
 import json
 import os
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -77,7 +78,18 @@ def assert_same(
 ) -> None:
     control_result = control.request(path, form=form, payload=payload)
     candidate_result = candidate.request(path, form=form, payload=payload)
-    assert control_result == candidate_result, (
+
+    def normalized(result):
+        status, content_type, body, final_path = result
+        if content_type == "text/html" and isinstance(body, bytes):
+            body = re.sub(
+                rb'\bnonce="[A-Za-z0-9_-]+"',
+                b'nonce="<per-response-csp-nonce>"',
+                body,
+            )
+        return status, content_type, body, final_path
+
+    assert normalized(control_result) == normalized(candidate_result), (
         path,
         control_result[:2],
         candidate_result[:2],
