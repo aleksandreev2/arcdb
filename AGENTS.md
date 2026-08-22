@@ -75,6 +75,7 @@ Completed:
 - Phase 3B legacy-serving SQLite shadow comparison with process-local counters, payload-free events and strict all-domain CI;
 - read-only cutover readiness preflight with full parity, SQLite health checks, recursive source-hash stability and a payload-free report that cannot authorize cutover by itself;
 - Phase 3C shadow-observation evidence validation plus a real Flask SQLite-canary -> legacy rollback rehearsal in CI.
+- read-only production discovery, structured private inventory, path-free reporting and deterministic source reconciliation tooling; live execution is still pending.
 
 Still pending:
 
@@ -220,8 +221,8 @@ At minimum:
 
 ## Next ordered work
 
-1. Obtain the live inventory/sanitized baseline and run the explicit read-only readiness preflight against discovered production paths.
-2. Review unknown-file counts and reconcile any live code/config differences.
+1. Run the two-stage procedure in `docs/PRODUCTION_INVENTORY.md` on the live host and reconcile its private inventory against the materialized repository baseline.
+2. Review every exact private source difference and unknown metadata file, then run the explicit read-only readiness preflight against discovered production paths.
 3. Enable legacy-serving shadow comparison for one bounded process, retain its private raw log and validate the payload-free events with `scripts/verify_read_shadow_observation.py`.
 4. Enable SQLite reads only for a bounded internal canary with immediate rollback to `legacy`.
 5. Make SQLite primary reads only after stable observation.
@@ -238,6 +239,7 @@ Start here, then read:
 - `docs/DATA_MODEL.md` — state/files and intended ownership.
 - `docs/STORAGE_MIGRATION.md` — SQLite migration phases.
 - `docs/PRODUCTION_SAFETY.md` — deployment/migration invariants and rollback.
+- `docs/PRODUCTION_INVENTORY.md` — exact read-only live discovery/inventory/reconciliation procedure.
 - `docs/ROADMAP.md` — ordered implementation plan.
 - `docs/DECISIONS.md` — architectural decisions and rationale.
 

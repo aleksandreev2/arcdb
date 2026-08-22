@@ -296,7 +296,7 @@ Before deployment decisions that depend on them, collect:
 - existing backup/snapshot strategy.
 - real data sizes and request/job load.
 
-Use `scripts/oracle_inventory.sh` for a read-only first pass when the owner is willing to run it.
+Use the complete read-only procedure in `docs/PRODUCTION_INVENTORY.md`: `scripts/oracle_inventory.sh` discovers candidate paths without guessed roots, the structured collector fingerprints operator-confirmed paths without payloads, and the reconciliation tool compares live source with `.runtime/source`. These tools are implemented; no live result is available yet.
 
 ## 14. Architecture rules
 

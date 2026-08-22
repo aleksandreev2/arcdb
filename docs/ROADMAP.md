@@ -119,11 +119,12 @@ Implemented:
 - overwrite-refusing sanitized readiness reports that explicitly leave canary/primary authorization false;
 - fail-closed audit of one bounded process's payload-free shadow events with complete six-domain coverage;
 - real Flask CI rehearsal that replaces the SQLite-read canary process with legacy on the same port and repeats authenticated API parity.
+- read-only host discovery, explicit-path structured production inventory, private exact source diff and separate path-free reporting; local/CI fixtures do not count as live inventory.
 
 Pending:
 
-1. obtain a live inventory/sanitized baseline and run the readiness preflight on explicit production paths;
-2. reconcile unknown files and live code/config differences;
+1. execute `docs/PRODUCTION_INVENTORY.md` with production access and collect the private live inventory;
+2. reconcile every private source difference and unknown metadata file, then run the readiness preflight on explicit production paths;
 3. enable legacy-serving shadow comparison for one bounded internal process and validate its events;
 4. enable SQLite reads only for a separate bounded internal canary;
 5. promote SQLite as primary read source only after stable observation;

@@ -23,6 +23,8 @@ Before touching production state:
 6. ensure the migration user can create files in the target directories;
 7. do not run the migration during another state-format migration.
 
+Before these preconditions are treated as known facts, execute `docs/PRODUCTION_INVENTORY.md`. Keep raw/private discovery and reconciliation artifacts outside Git. The sanitized inventory/reconciliation reports deliberately omit paths, identities and payloads and cannot authorize a migration or read cutover.
+
 For the first production pass, prefer a brief maintenance/read-only window so source state cannot change between snapshot and cutover. If no maintenance window is possible, runtime dual-write and a more careful consistent-snapshot protocol are required.
 
 ## Recommended two-step production use

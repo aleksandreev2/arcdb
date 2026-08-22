@@ -33,6 +33,7 @@ jobs:
           arcdb/storage/read_observation.py
           arcdb/storage/readiness.py
           arcdb/storage/state_parity.py
+          arcdb/production_inventory.py
           scripts/dev_bootstrap.py
           scripts/dev_seed.py
           scripts/dev_seed_library.py
@@ -42,6 +43,8 @@ jobs:
           scripts/verify_state_parity.py
           scripts/verify_read_cutover_readiness.py
           scripts/verify_read_shadow_observation.py
+          scripts/collect_production_inventory.py
+          scripts/reconcile_production_inventory.py
           scripts/runtime_overlays.py
           scripts/materialize_baseline.py
           tests/make_seed_fixtures.py
@@ -55,6 +58,7 @@ jobs:
           tests/test_runtime_metadata.py
           tests/test_runtime_overlays.py
           tests/test_dev_seed.py
+          tests/test_production_inventory.py
           tests/runtime_collection_workflow.py
           tests/runtime_metadata_workflow.py
           tests/runtime_auth_workflow.py
@@ -64,6 +68,8 @@ jobs:
           test -f .runtime/source/templates/login.html
           test -f .runtime/source/templates/gallery.html
           test -f .runtime/source/templates/reader.html
+      - name: Validate production discovery shell syntax
+        run: bash -n scripts/oracle_inventory.sh
 
   local-bootstrap-smoke:
     runs-on: ubuntu-latest
@@ -195,6 +201,7 @@ jobs:
           tests/test_runtime_reads.py
           tests/test_read_observation.py
           tests/test_readiness.py
+          tests/test_production_inventory.py
           tests/test_runtime_users.py
           tests/test_runtime_metadata.py
           tests/test_runtime_overlays.py

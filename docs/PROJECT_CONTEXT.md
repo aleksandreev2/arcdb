@@ -104,6 +104,7 @@ Implemented in repository:
 - legacy-serving runtime shadow comparison with payload-free events and strict all-domain CI;
 - explicit-path, read-only production readiness preflight with recursive source-hash stability, full parity and a sanitized non-authorizing report;
 - bounded-process shadow-event auditing and a real Flask SQLite-canary -> legacy rollback rehearsal in CI.
+- read-only host discovery plus explicit-path structured production inventory and materialized-baseline reconciliation, with separate private and path-free reports.
 
 SQLite is **not** the default or production read source. Phase 3 now exposes `STATE_READ_BACKEND=legacy|sqlite`; local/CI can run the same authenticated API flows against both backends, while `legacy` remains default. Phase 3B adds `STATE_READ_SHADOW_COMPARE=1` for legacy-served requests: SQLite is read only for equality checking and payload-free match/mismatch/error events, so non-strict observation cannot replace or damage the authoritative response.
 
@@ -232,8 +233,8 @@ Avoid a full rewrite. Keep Flask and preserve API/UI behavior while extracting r
 
 ## Current next ordered work
 
-1. Obtain the live inventory/sanitized baseline and run the explicit-path readiness preflight.
-2. Reconcile unknown files and any live source/config differences without overwriting production.
+1. Run `docs/PRODUCTION_INVENTORY.md` on the live host and collect the exact private application/data/service inventory.
+2. Reconcile every source difference and unknown metadata file against `.runtime/source`, then run the explicit-path readiness preflight.
 3. Run legacy-serving shadow comparison for one bounded internal process and validate its payload-free events.
 4. Run a separate bounded SQLite-read canary with tested rollback to `legacy`.
 5. Make SQLite primary read source only after stable observation.

@@ -12,8 +12,9 @@ Read these before architecture/storage changes:
 4. `docs/DATA_MODEL.md` — current and target data ownership.
 5. `docs/STORAGE_MIGRATION.md` — staged JSON -> SQLite plan.
 6. `docs/PRODUCTION_SAFETY.md` — backup/cutover/rollback invariants.
-7. `docs/ROADMAP.md` — ordered implementation plan.
-8. `docs/DECISIONS.md` — architectural decisions and rationale.
+7. `docs/PRODUCTION_INVENTORY.md` — live discovery/inventory/reconciliation procedure.
+8. `docs/ROADMAP.md` — ordered implementation plan.
+9. `docs/DECISIONS.md` — architectural decisions and rationale.
 
 Material architectural changes should update the relevant docs in the same PR.
 
@@ -160,6 +161,31 @@ legacy metadata/CSV state
 
 Legacy files are not modified/deleted by the migration. If an SQLite target already exists it is preserved before candidate promotion. See `docs/PRODUCTION_SAFETY.md` before any production use.
 
+## Production inventory and source reconciliation
+
+No live SSH session or sanitized production snapshot is included in this repository, so current production paths/configuration are still unknown. Repository-side tooling now provides the complete read-only procedure without inventing those facts:
+
+```bash
+bash scripts/oracle_inventory.sh > /new/private/path/oracle-inventory.txt
+
+PYTHONPATH=. python3 scripts/collect_production_inventory.py \
+  --app-root /explicit/live/source \
+  --meta-dir /explicit/live/metadata \
+  --sqlite-db /explicit/live/arcdb.sqlite3 \
+  --content-root chapters=/explicit/live/chapters \
+  --private-report /new/private/path/production-inventory-private.json \
+  --report /new/private/path/production-inventory-report.json
+
+python3 scripts/materialize_baseline.py --force
+PYTHONPATH=. python3 scripts/reconcile_production_inventory.py \
+  --inventory /private/path/production-inventory-private.json \
+  --reference-root .runtime/source \
+  --private-report /new/private/path/production-reconciliation-private.json \
+  --report /new/private/path/production-reconciliation-report.json
+```
+
+Private artifacts retain the exact paths and relative filenames needed by the operator. Separate sanitized reports contain aggregate counts/hashes and no paths, user identities, payloads or secret values. All reports leave readiness, canary and primary-read authorization false. See `docs/PRODUCTION_INVENTORY.md` for systemd, Gunicorn, Cloudflared, mount and unknown-file handling.
+
 ## Local data
 
 Development data stays outside Git:
@@ -212,6 +238,8 @@ scripts/dev_seed.py             local-only login seed
 scripts/dev_seed_library.py     EPUB scanner + local library/state seeder
 scripts/migrate_state_to_sqlite.py safe legacy-state -> SQLite migration
 scripts/oracle_inventory.sh     read-only production inventory helper
+scripts/collect_production_inventory.py structured private/path-free inventory reports
+scripts/reconcile_production_inventory.py live source vs materialized baseline diff
 tests/                          bootstrap/seed/storage safety coverage
 docs/                           architecture, data, safety, roadmap and decisions
 ```
