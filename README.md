@@ -22,6 +22,7 @@ Read these before architecture/storage changes:
 11. `docs/PERFORMANCE_BASELINE.md` — reproducible before/after measurements.
 12. `docs/ASYNC_PACKAGER.md` — persistent queue, worker, API and rollout procedure.
 13. `docs/TELEGRAM_SERVICE.md` — isolated Telethon service, rollout and rollback.
+14. `docs/LIBRARY_INDEX.md` — persistent library/chapter index, rebuild and rollout.
 
 Material architectural changes should update the relevant docs in the same PR.
 
@@ -46,7 +47,8 @@ start.bat
 7. creates/maintains the local development login;
 8. if the local library is empty and EPUB fixtures exist in `dev-fixtures/inbox`, seeds once;
 9. creates or verifies the schema v3 SQLite shadow and full auth/user/collection/metadata parity;
-10. starts web and the separate EPUB packager at `http://127.0.0.1:5004/login` and
+10. atomically rebuilds and verifies the local persistent library/chapter index;
+11. starts web and the separate EPUB packager at `http://127.0.0.1:5004/login` and
     opens it in the browser. The separate Telegram service remains opt-in locally.
 
 Normal startup does **not** reset an already populated local library.
@@ -248,6 +250,23 @@ PYTHONPATH=. python scripts/benchmark_epub_io.py --payload-mib 16 --repetitions 
 See `docs/PERFORMANCE_BASELINE.md` for the recorded p50/p95/p99 result and its local,
 non-production scope.
 
+## Persistent library index
+
+Library, novel lookup, tags/authors and reader chapter/image discovery use a
+separate rebuildable SQLite index. Normal requests do not rebuild metadata or walk
+chapter storage. Local bootstrap publishes an atomic candidate automatically;
+non-local startup verifies only and fails closed if the index is missing.
+
+Explicit build/verification:
+
+```bash
+PYTHONPATH=. python scripts/reindex_library.py
+PYTHONPATH=. python scripts/reindex_library.py --verify-only
+```
+
+The index is not schema-v3 user state and is not a replacement for state backup.
+See `docs/LIBRARY_INDEX.md` for production rollout and rollback.
+
 ## Local data
 
 Development data stays outside Git:
@@ -255,6 +274,7 @@ Development data stays outside Git:
 ```text
 data/
 ├── arcdb.sqlite3
+├── library_index.sqlite3
 ├── migration-backups/
 ├── sqlite-backups/
 ├── metadata/

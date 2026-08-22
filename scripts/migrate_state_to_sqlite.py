@@ -109,6 +109,13 @@ def main() -> int:
         env.get("TRANSLATED_CSV_PATH"), ROOT / "data" / "uploaded_novels_tracker.csv"
     )
     raw_csv = resolve_path(env.get("RAW_MASTER_CSV_PATH"), ROOT / "data" / "master_library_index.csv")
+    package_jobs_db = resolve_path(
+        env.get("PACKAGE_JOBS_DB_PATH"), meta_dir / "package_jobs.sqlite3"
+    )
+    library_index_db = resolve_path(
+        env.get("LIBRARY_INDEX_DB_PATH"), meta_dir / "library_index.sqlite3"
+    )
+    derived_databases = [db_path, package_jobs_db, library_index_db]
 
     core_paths = [users_path, user_data_path, collections_path]
     if args.require_core:
@@ -150,6 +157,7 @@ def main() -> int:
         backup_dir=backup_dir,
         meta_dir=meta_dir,
         explicit_files=explicit_snapshot_files,
+        excluded_files=derived_databases,
     )
     manifest_path = backup_dir / "manifest.json"
     update_manifest(
@@ -170,6 +178,7 @@ def main() -> int:
         snapshot["fingerprints"],
         meta_dir=meta_dir,
         explicit_files=explicit_snapshot_files,
+        excluded_files=derived_databases,
     )
 
     candidate_fp = file_fingerprint(candidate_path)

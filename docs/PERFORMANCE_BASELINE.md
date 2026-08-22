@@ -58,3 +58,22 @@ These are different scopes, so the comparison proves request-path separation rat
 than end-to-end speedup: the HTTP path now persists control-plane work and returns,
 while EPUB CPU/I/O continues asynchronously in the worker. Production queue wait,
 Block Volume latency and total completion time remain unmeasured.
+
+## Persistent library query — 2026-08-22
+
+Command:
+
+```text
+python -m scripts.benchmark_library_index --items 10000 --repetitions 200
+```
+
+On the same local Windows/Python/CPU environment, a synthetic 10,000-title atomic
+index rebuild took 14,193.523 ms. A warmed search + tag filter + views sort + first
+page query matched 100 titles and measured p50 9.685 ms, p95 12.587 ms and p99
+14.640 ms with FTS5 trigram enabled.
+
+The benchmark uses only generated metadata and a temporary database; it excludes
+real chapter filesystem scans, HTTP/auth overhead and OCI Block Volume behavior.
+Its purpose is a reproducible indexed-query regression baseline. The architectural
+improvement is that rebuild/scanning is now explicit and outside the request path,
+not a claim that these local numbers predict production latency.

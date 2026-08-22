@@ -33,11 +33,14 @@ class TrackedRuntimeSourceTests(unittest.TestCase):
     def test_required_runtime_files_are_tracked(self) -> None:
         self.assertTrue(TRACKED_APP.is_file())
         self.assertTrue((ROOT / "arcdb" / "jobs.py").is_file())
+        self.assertTrue((ROOT / "arcdb" / "library_index.py").is_file())
         self.assertTrue((ROOT / "arcdb" / "package_worker.py").is_file())
         self.assertTrue((ROOT / "scripts" / "run_packager.py").is_file())
         self.assertTrue((ROOT / "arcdb" / "telegram_gateway.py").is_file())
         self.assertTrue((ROOT / "arcdb" / "telegram_service.py").is_file())
         self.assertTrue((ROOT / "scripts" / "run_telegram.py").is_file())
+        self.assertTrue((ROOT / "scripts" / "reindex_library.py").is_file())
+        self.assertTrue((ROOT / "scripts" / "benchmark_library_index.py").is_file())
         self.assertTrue(
             (ROOT / "deploy" / "systemd" / "arcdb-packager.service.example").is_file()
         )
@@ -135,6 +138,35 @@ class TrackedRuntimeSourceTests(unittest.TestCase):
         )
         self.assertIn("waitForPackageJob", gallery)
         self.assertIn("/api/jobs/${activeJobId}/cancel", gallery)
+
+    def test_library_and_reader_runtime_paths_use_persistent_index(self) -> None:
+        text = TRACKED_APP.read_text(encoding="utf-8")
+
+        def function_slice(name: str, next_marker: str) -> str:
+            start = text.index(f"def {name}")
+            end = text.index(next_marker, start)
+            return text[start:end]
+
+        load_slice = function_slice("load_gallery_data", "def find_novel")
+        self.assertIn("LIBRARY_INDEX.all_items()", load_slice)
+        self.assertNotIn("_build_gallery_items", load_slice)
+
+        find_slice = function_slice("find_novel", "def novel_key")
+        self.assertIn("LIBRARY_INDEX.lookup", find_slice)
+        self.assertNotIn("for novel in", find_slice)
+
+        api_slice = function_slice("api_library", "def _clamped_limit")
+        self.assertIn("LIBRARY_INDEX.query", api_slice)
+        self.assertNotIn("load_gallery_data", api_slice)
+        self.assertNotIn("os.walk", api_slice)
+
+        self.assertIn("return LIBRARY_INDEX.chapters(novel_key(novel))[0]", text)
+        self.assertIn("return LIBRARY_INDEX.images(novel_key(novel))", text)
+        self.assertEqual(text.count("_build_gallery_items()"), 2)
+        self.assertIn(
+            "LIBRARY_INDEX.rebuild(\n        _build_gallery_items(),",
+            text,
+        )
 
 
 if __name__ == "__main__":

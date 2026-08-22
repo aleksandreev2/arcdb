@@ -90,13 +90,16 @@ Completed:
   authenticated loopback streaming is handled by a single separate service with
   health/readiness, local bootstrap opt-in, tests and a systemd template. Repository
   implementation is complete; production enablement is not claimed.
+- persistent library/chapter index: atomic candidate rebuild, integrity checks,
+  stable aliases, SQL/FTS search/filter/sort/pagination, indexed reader discovery
+  and incremental metadata/upload updates. Repository/local/CI implementation is
+  complete; production enablement is not claimed.
 
 Still pending:
 
 - production enablement of SQLite reads after live reconciliation/observation;
 - removal of JSON writes;
 - production data/runtime cutover;
-- persistent library index;
 - R2/static edge migration.
 
 ## Current state ownership during Phase 3C

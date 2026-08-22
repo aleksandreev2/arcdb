@@ -345,6 +345,10 @@ Status: feature-flagged backends, legacy-serving runtime shadow observation and 
 - match/mismatch/error events contain only domain, counter and error type; user payloads and auth secrets are never logged;
 - successful events are rate-limited by `STATE_READ_SHADOW_REPORT_EVERY` after the first match per process/domain;
 - `scripts/verify_read_cutover_readiness.py` requires explicit metadata/SQLite paths and performs a read-only single-snapshot database health/full-parity check;
+- known operational databases below the metadata root must be supplied with
+  repeatable `--exclude-derived-db`; unknown files remain tracked. The migration
+  command automatically excludes its target plus configured package-job/library
+  index databases and their WAL/SHM sidecars;
 - the preflight recursively fingerprints legacy metadata before and after verification, reports only aggregate counts/checks and refuses to overwrite an existing report;
 - a passing preflight report keeps both bounded-canary and primary-read authorization false pending operator review and live observation.
 - `scripts/verify_read_shadow_observation.py` audits the payload-free events from exactly one bounded process log;

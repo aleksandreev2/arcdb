@@ -37,6 +37,7 @@ class ReadinessPaths:
     user_uploads_path: Path
     custom_meta_path: Path
     allowed_emails_path: Path
+    derived_database_paths: tuple[Path, ...] = ()
 
 
 def resolve_readiness_paths(
@@ -49,6 +50,7 @@ def resolve_readiness_paths(
     user_uploads_path: Path | None = None,
     custom_meta_path: Path | None = None,
     allowed_emails_path: Path | None = None,
+    derived_database_paths: tuple[Path, ...] = (),
 ) -> ReadinessPaths:
     meta = meta_dir.expanduser().resolve()
     return ReadinessPaths(
@@ -62,6 +64,9 @@ def resolve_readiness_paths(
         allowed_emails_path=(allowed_emails_path or meta / "allowed_gmails.txt")
         .expanduser()
         .resolve(),
+        derived_database_paths=tuple(
+            path.expanduser().resolve() for path in derived_database_paths
+        ),
     )
 
 
@@ -76,17 +81,24 @@ def _known_source_paths(paths: ReadinessPaths) -> tuple[Path, ...]:
     )
 
 
-def _excluded_database_paths(db_path: Path) -> set[str]:
-    return {
-        str(db_path.resolve()),
-        str(Path(str(db_path) + "-wal").resolve()),
-        str(Path(str(db_path) + "-shm").resolve()),
-    }
+def _excluded_database_paths(paths: tuple[Path, ...]) -> set[str]:
+    excluded = set()
+    for path in paths:
+        excluded.update(
+            {
+                str(path.resolve()),
+                str(Path(str(path) + "-wal").resolve()),
+                str(Path(str(path) + "-shm").resolve()),
+            }
+        )
+    return excluded
 
 
 def _snapshot_sources(paths: ReadinessPaths) -> dict[str, dict[str, Any]]:
     known = _known_source_paths(paths)
-    excluded = _excluded_database_paths(paths.db_path)
+    excluded = _excluded_database_paths(
+        (paths.db_path, *paths.derived_database_paths)
+    )
     discovered = {
         str(path.resolve()): path.resolve()
         for path in discover_snapshot_files(paths.meta_dir, known)

@@ -163,6 +163,12 @@ def main() -> int:
     final_meta = {**first_meta, "title_en": "Phase 2C metadata updated", "synopsis": "Final metadata write."}
     client.json("/api/edit", first_meta)
     client.json("/api/edit", final_meta)
+    edited_library = client.json(
+        "/api/library",
+        {"page": 1, "limit": 50, "search": "Phase 2C metadata updated"},
+    )
+    assert edited_library["total"] == 1, edited_library
+    assert edited_library["novels"][0]["title_en"] == final_meta["title_en"]
 
     add_html = client.form(
         "/admin/access", {"action": "add", "emails": f"{TEST_EMAIL}\n{TEST_EMAIL.upper()}"}
@@ -198,6 +204,11 @@ def main() -> int:
         "/admin/access", {"action": "approve_upload", "upload_id": upload_id}
     )
     assert "Approved and published novel" in approved_html, approved_html[-1000:]
+    approved_library = client.json(
+        "/api/library", {"page": 1, "limit": 50, "search": upload_id}
+    )
+    assert approved_library["total"] == 1, approved_library
+    assert str(approved_library["novels"][0]["id"]) == upload_id
     duplicate_approve = client.form(
         "/admin/access", {"action": "approve_upload", "upload_id": upload_id}
     )
@@ -218,6 +229,10 @@ def main() -> int:
         "/admin/access", {"action": "reject_upload", "upload_id": upload_id}
     )
     assert "Rejected and deleted upload" in rejected_html, rejected_html[-1000:]
+    rejected_library = client.json(
+        "/api/library", {"page": 1, "limit": 50, "search": upload_id}
+    )
+    assert rejected_library["total"] == 0, rejected_library
     missing_reject = client.form(
         "/admin/access", {"action": "reject_upload", "upload_id": upload_id}
     )

@@ -321,6 +321,14 @@ def browser_url(env: dict[str, str]) -> str:
     return f"http://{host}:{port}/login"
 
 
+def ensure_library_index_ready(py: Path, child_env: dict[str, str]) -> None:
+    command = [str(py), str(ROOT / "scripts" / "reindex_library.py")]
+    if child_env.get("ARCHIVEDB_LOCAL_DEV") != "1":
+        command.append("--verify-only")
+    subprocess.run(command, cwd=ROOT, env=child_env, check=True)
+    print("[setup] Persistent library index is ready.")
+
+
 def wait_for_server_and_open(url: str, proc: subprocess.Popen, env: dict[str, str]) -> None:
     if os.environ.get("CI") or not url.startswith("http://"):
         return
@@ -436,6 +444,7 @@ def main() -> int:
         auto_seed_library_if_empty(py, child_env)
     seed_dev_account(py, child_env)
     ensure_shadow_state_ready(py, child_env)
+    ensure_library_index_ready(py, child_env)
 
     if args.setup_only:
         print("[setup] Local development environment is ready.")

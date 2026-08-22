@@ -234,21 +234,18 @@ Its health/readiness endpoints contain no paths, identities or credentials. It m
 run with exactly one Gunicorn worker; request threads do not duplicate the client.
 See `docs/TELEGRAM_SERVICE.md`. Production enablement remains inventory-gated.
 
-## 9. Library indexing target
+## 9. Library indexing
 
-Current request-time filesystem scanning should become an ingest/update-time persistent index.
+Repository/local/CI runtime now uses a separate rebuildable SQLite index for library
+queries, novel aliases, tags/authors and ordered reader chapter/image discovery.
+Filesystem/metadata scanning occurs only in the explicit candidate rebuild; normal
+requests open the index read-only. Metadata edits and upload approval/rejection
+update affected rows. Missing/incompatible index state fails closed instead of
+silently scanning.
 
-Candidate indexed fields:
-
-- stable novel id/library key;
-- title/original title;
-- source/raw id;
-- translation/raw file paths/object keys;
-- chapter count;
-- cover reference;
-- tags/metadata;
-- updated timestamp;
-- content hash/version.
+This operational index is intentionally separate from schema-v3 user state and does
+not change production state authority. Production enablement remains inventory- and
+rollout-gated. See `docs/LIBRARY_INDEX.md`.
 
 HTTP library queries should become indexed database queries rather than `os.walk` + full-list sort/filter.
 
@@ -297,8 +294,8 @@ Ordered roughly by value/risk:
 
 1. move long packaging out of HTTP requests (upload/EPUB I/O itself is now bounded and streamed);
 2. replace hot JSON whole-file state with SQLite WAL;
-3. replace repeated linear novel lookup with indexed lookup;
-4. build persistent library/chapter index;
+3. production-enable and measure the implemented persistent library/chapter index;
+4. remove remaining non-library request-path scans where measurements identify them;
 5. production-enable the implemented Telethon split after inventory;
 6. then tune Gunicorn workers/threads using measured workload and after addressing
    the remaining process-local state;
