@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import importlib.util
 import re
 import unittest
@@ -228,10 +227,7 @@ class TrackedRuntimeSourceTests(unittest.TestCase):
         self.assertIn("<per-response-csp-nonce>", parity)
         self.assertIn("normalized(control_result) == normalized(candidate_result)", parity)
 
-        css_dir = ROOT / "arcdb" / "static" / "css"
-        auth_css = css_dir / "auth.css"
-        auth_version = hashlib.sha256(auth_css.read_bytes()).hexdigest()[:16]
-        expected_link = f'/static/css/auth.css?v={auth_version}'
+        expected_link = "{{ static_asset_url('css/auth.css') }}"
         for name in (
             "login.html", "register.html", "verify.html",
             "forgot_password.html", "reset_password.html",
@@ -244,19 +240,12 @@ class TrackedRuntimeSourceTests(unittest.TestCase):
             ("reader.html", "reader.css"),
             ("community.html", "community.css"),
         ):
-            stylesheet = css_dir / stylesheet_name
-            version = hashlib.sha256(stylesheet.read_bytes()).hexdigest()[:16]
             self.assertIn(
-                f'/static/css/{stylesheet_name}?v={version}',
+                "{{ static_asset_url('css/" + stylesheet_name + "') }}",
                 templates[template_name],
             )
 
-        admin_css = css_dir / "admin-access.css"
-        admin_version = hashlib.sha256(admin_css.read_bytes()).hexdigest()[:16]
-        self.assertIn(
-            f'/static/css/admin-access.css?v={admin_version}',
-            text,
-        )
+        self.assertIn('static_asset_url("css/admin-access.css")', text)
 
         rendered_sources = combined + "\n" + text
         self.assertIsNone(re.search(r"<style\b", rendered_sources, re.IGNORECASE))
@@ -264,6 +253,7 @@ class TrackedRuntimeSourceTests(unittest.TestCase):
         self.assertNotIn(".style.", rendered_sources)
         self.assertNotIn("__STYLESHEET_LINK__", rendered_sources)
         self.assertNotIn("__ADMIN_STYLESHEET_LINK__", rendered_sources)
+        self.assertIn('app.jinja_env.globals["static_asset_url"]', text)
         self.assertIn("actual_version.startswith(asset_version)", text)
 
     def test_state_changes_are_centrally_origin_protected(self) -> None:

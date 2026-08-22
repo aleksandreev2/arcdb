@@ -630,9 +630,10 @@ Decision:
 - replace fixed inline presentation and dynamic visibility/width writes with named
   classes, `hidden`, semantic `progress` elements and bounded Web Animations while
   retaining reader preference custom properties;
-- content-version every runtime stylesheet with the first 16 hexadecimal SHA-256
-  characters and grant immutable caching only when that prefix matches the actual
-  confined static file;
+- content-version every runtime stylesheet at response rendering time with the first
+  16 hexadecimal SHA-256 characters of the bytes this process will actually serve,
+  avoiding platform line-ending assumptions, and grant immutable caching only when
+  that prefix matches the actual confined static file;
 - set `style-src 'self'` and `style-src-attr 'none'`, retaining the existing
   per-response nonce contract for executable inline bootstrap code;
 - require structural, real HTTP and local browser regression checks for the large

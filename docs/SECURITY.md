@@ -105,7 +105,9 @@ and the nonce and no longer contains `unsafe-inline` or a CDN. `script-src-attr
 moved to `addEventListener`, and the unused missing-JSZip/CDN fallback was removed.
 
 CSS for the five auth pages, gallery, reader, community and generated admin access
-page is served from local content-hash-versioned assets. Only a version prefix that
+page is served from local content-hash-versioned assets. The URL version is computed
+from the bytes the running process will actually serve, so Windows and Linux line
+endings cannot produce a stale hard-coded fingerprint. Only a version prefix that
 matches the served file's SHA-256 receives the one-year immutable cache header;
 unversioned and forged-version requests do not. Tracked runtime HTML has no style
 blocks or style attributes, and dynamic visibility/progress presentation uses

@@ -546,6 +546,17 @@ def _static_asset_sha256(static_path):
             digest.update(chunk)
     return digest.hexdigest()
 
+def static_asset_url(relative_path):
+    """Build a versioned URL from the bytes this process will actually serve."""
+    normalized_path = str(relative_path).replace("/", os.sep)
+    static_path = confined_child(app.static_folder, normalized_path)
+    if not static_path or not os.path.isfile(static_path):
+        raise RuntimeError(f"Required static asset is missing: {relative_path}")
+    version = _static_asset_sha256(static_path)[:16]
+    return url_for("static", filename=relative_path, v=version)
+
+app.jinja_env.globals["static_asset_url"] = static_asset_url
+
 @app.after_request
 def set_security_headers(response):
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
@@ -4619,6 +4630,7 @@ def admin_access():
         """)
     incidents_html = "\n".join(incident_cards) or '<p>No multi-account incidents recorded yet.</p>'
 
+    admin_stylesheet_url = static_asset_url("css/admin-access.css")
     html = f"""
 <!doctype html>
 <html lang="en">
@@ -4626,7 +4638,7 @@ def admin_access():
   <meta charset="utf-8">
   <title>Access &amp; Moderation - ArchiveDB</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" href="/static/css/admin-access.css?v=1b25f5148ab0dc6e">
+  <link rel="stylesheet" href="{admin_stylesheet_url}">
 </head>
 
 <body>

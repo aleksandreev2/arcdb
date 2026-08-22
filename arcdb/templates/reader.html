@@ -6,7 +6,7 @@
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" id="metaThemeColor" content="#0c0d12">
 <title>Reading: {{ novel.title_en }}</title>
-<link rel="stylesheet" href="/static/css/reader.css?v=64034c18584a0b93">
+<link rel="stylesheet" href="{{ static_asset_url('css/reader.css') }}">
 </head>
 <body>
   <div class="topline" aria-hidden="true"><progress id="toplineFill" max="100" value="0">0%</progress></div>
