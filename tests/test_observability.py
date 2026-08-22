@@ -9,11 +9,11 @@ class RequestObservabilityTests(unittest.TestCase):
     def test_summarizes_route_timings_without_request_ids(self) -> None:
         lines = [
             "[REQUEST] request_id=" + "a" * 32
-            + " route=/api/library method=POST status=200 duration_ms=1.000",
+            + " route=/api/library method=POST status=200 duration_ms=1.000 sqlite_ms=0.500",
             "[REQUEST] request_id=" + "b" * 32
-            + " route=/api/library method=POST status=200 duration_ms=10.000",
+            + " route=/api/library method=POST status=200 duration_ms=10.000 sqlite_ms=5.000",
             "[REQUEST] request_id=" + "c" * 32
-            + " route=/api/library method=POST status=200 duration_ms=20.000",
+            + " route=/api/library method=POST status=200 duration_ms=20.000 sqlite_ms=10.000",
             "[ACCESS] email=private@example.test ip=192.0.2.1",
             "payload=super-secret-token",
         ]
@@ -26,6 +26,14 @@ class RequestObservabilityTests(unittest.TestCase):
                 "status": 200,
                 "count": 3,
                 "duration_ms": {"p50": 10.0, "p95": 20.0, "p99": 20.0},
+                "components_ms": {
+                    "sqlite": {
+                        "count": 3,
+                        "p50": 5.0,
+                        "p95": 10.0,
+                        "p99": 10.0,
+                    }
+                },
             }
         ])
         self.assertNotIn("request_id", str(report))

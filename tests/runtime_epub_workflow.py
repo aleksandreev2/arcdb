@@ -38,6 +38,7 @@ class Client:
         self.opener = urllib.request.build_opener(
             urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar())
         )
+        self.last_server_timing = ""
 
     def authenticate_fixture(self, email: str) -> None:
         """Use a signed CI-only session without consuming the auth rate bucket."""
@@ -71,10 +72,12 @@ class Client:
             status = response.status
             body = response.read()
             response_type = response.headers.get_content_type()
+            self.last_server_timing = response.headers.get("Server-Timing", "")
         except urllib.error.HTTPError as exc:
             status = exc.code
             body = exc.read()
             response_type = exc.headers.get_content_type()
+            self.last_server_timing = exc.headers.get("Server-Timing", "")
         if status != expected_status:
             raise AssertionError(
                 f"{path} returned HTTP {status}, expected {expected_status}: "
@@ -141,6 +144,11 @@ def main() -> int:
         "/api/epub_package/init",
         {"id": "11560", "want_raw": True},
     )
+    assert {"sqlite", "filesystem", "epub"} <= {
+        part.split(";", 1)[0].strip()
+        for part in owner.last_server_timing.split(",")
+        if part.strip()
+    }, owner.last_server_timing
     session_id = str(created["session_id"])
     assert len(session_id) == 32, created
 
@@ -163,6 +171,11 @@ def main() -> int:
     queued = owner.json(
         f"/api/epub_package/finalize/{session_id}", {}, expected_status=202
     )
+    assert {"filesystem", "job"} <= {
+        part.split(";", 1)[0].strip()
+        for part in owner.last_server_timing.split(",")
+        if part.strip()
+    }, owner.last_server_timing
     assert queued["state"] in {"queued", "processing", "done"}, queued
     job_id = str(queued["job_id"])
     other_user.json(f"/api/jobs/{job_id}", expected_status=404)

@@ -324,8 +324,12 @@ Production credentials, Telegram sessions, user databases, EPUBs, extracted chap
 
 The web process exposes payload-free `GET /healthz` and `GET /readyz` endpoints.
 Normal request logs use bounded Flask route templates and include request ID, method,
-status and duration without email/IP/payload data. See `docs/OBSERVABILITY.md` for
-the exact contract and the p50/p95/p99 summarizer.
+status and duration plus present-only SQLite/filesystem/EPUB/job totals without
+email/IP/path/payload data. Instrumented responses expose the same fixed components
+through `Server-Timing`. The seeded loopback-only workload covers library, search,
+novel, reader, collections and community routes; upload/job/library/EPUB synthetic
+baselines cover the remaining heavy paths. See `docs/OBSERVABILITY.md` and
+`docs/PERFORMANCE_BASELINE.md` for the exact contracts and p50/p95/p99 commands.
 
 All state-changing HTTP methods require an allowed browser origin before route
 dispatch, and logout is POST-only. Production must set the exact public

@@ -588,3 +588,32 @@ request nonce immediately closes arbitrary inline-script and handler execution w
 preserving behavior and Jinja-provided reader data. Externalizing the already
 identical auth CSS proves the fingerprint/cache contract. The remaining style-only
 exception does not authorize script execution and is documented rather than hidden.
+
+## ADR-031 — Measure bounded request components and benchmark only controlled local HTTP
+
+Status: accepted and implemented for repository/local/CI runtime.
+
+Decision:
+
+- retain the payload-free total request event and add only the fixed `sqlite`,
+  `filesystem`, `epub` and `job` duration components when an instrumented scope ran;
+- expose those same totals through `Server-Timing` so a local HTTP runner does not
+  need access to private process logs;
+- aggregate only route/scenario labels, method, status, sample counts and
+  p50/p95/p99 timings; never retain concrete URLs, IDs, credentials, request IDs or
+  response payloads;
+- restrict the authenticated workload runner to loopback HTTP and the reproducible
+  seed library; use explicit bounded profile labels for controlled comparisons;
+- keep upload, EPUB packaging, SQLite queue and large-library synthetic benchmarks
+  beside the HTTP workload and distinguish all local results from production facts.
+
+Reasoning:
+
+Total latency alone cannot tell whether a regression belongs to SQLite, storage,
+EPUB processing or queue control, while arbitrary dynamic labels can leak user data
+and create unbounded metrics. Fixed additive scopes provide enough attribution for
+the current monolith without introducing a metrics service. A loopback-only runner
+prevents this developer tool from becoming an accidental production load generator
+or credential transport. Local/CI measurements establish repeatability and wiring;
+Gunicorn, traffic concurrency and Block Volume tuning still require reconciled live
+inputs.

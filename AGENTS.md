@@ -94,6 +94,9 @@ Completed:
   stable aliases, SQL/FTS search/filter/sort/pagination, indexed reader discovery
   and incremental metadata/upload updates. Repository/local/CI implementation is
   complete; production enablement is not claimed.
+- bounded performance observation: total and SQLite/filesystem/EPUB/job request
+  timings, sanitized p50/p95/p99 aggregation, a seeded loopback HTTP workload and
+  upload/job/library/EPUB local baselines. These do not claim production capacity.
 
 Still pending:
 
@@ -235,6 +238,8 @@ At minimum:
   real web -> worker -> download flow;
 - keep the explicit read-cutover preflight green and its report free of paths, identities and payloads;
 - keep the bounded shadow-observation audit and SQLite-canary -> legacy rollback rehearsal green;
+- keep component timing labels bounded and performance reports free of concrete
+  paths, identities, request IDs and payloads;
 - update docs when architecture, storage ownership or rollout state changes.
 
 ## Next ordered work

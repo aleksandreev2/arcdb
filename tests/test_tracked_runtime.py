@@ -44,6 +44,8 @@ class TrackedRuntimeSourceTests(unittest.TestCase):
         self.assertTrue((ROOT / "scripts" / "run_telegram.py").is_file())
         self.assertTrue((ROOT / "scripts" / "reindex_library.py").is_file())
         self.assertTrue((ROOT / "scripts" / "benchmark_library_index.py").is_file())
+        self.assertTrue((ROOT / "scripts" / "benchmark_http_routes.py").is_file())
+        self.assertTrue((ROOT / "scripts" / "benchmark_upload_io.py").is_file())
         self.assertTrue(
             (ROOT / "deploy" / "systemd" / "arcdb-packager.service.example").is_file()
         )
@@ -184,9 +186,14 @@ class TrackedRuntimeSourceTests(unittest.TestCase):
             "method=",
             "status=",
             "duration_ms=",
+            "Server-Timing",
+            "observe_request_component",
+            "request_component_timings",
             'response.headers.setdefault("X-Request-ID", request_id)',
         ):
             self.assertIn(marker, text)
+        metrics = (ROOT / "arcdb" / "request_metrics.py").read_text(encoding="utf-8")
+        self.assertIn('COMPONENT_NAMES = ("sqlite", "filesystem", "epub", "job")', metrics)
         log_start = text.index("def log_request")
         log_end = text.index("def _content_security_policy", log_start)
         request_log = text[log_start:log_end]

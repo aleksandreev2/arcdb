@@ -28,6 +28,8 @@ jobs:
           arcdb/jobs.py
           arcdb/library_index.py
           arcdb/observability.py
+          arcdb/request_metrics.py
+          arcdb/http_benchmark.py
           arcdb/path_security.py
           arcdb/security.py
           arcdb/package_worker.py
@@ -49,6 +51,8 @@ jobs:
           scripts/benchmark_epub_io.py
           scripts/benchmark_job_queue.py
           scripts/benchmark_library_index.py
+          scripts/benchmark_http_routes.py
+          scripts/benchmark_upload_io.py
           scripts/run_packager.py
           scripts/run_telegram.py
           scripts/reindex_library.py
@@ -81,6 +85,8 @@ jobs:
           tests/test_jobs.py
           tests/test_library_index.py
           tests/test_observability.py
+          tests/test_request_metrics.py
+          tests/test_http_benchmark.py
           tests/test_path_security.py
           tests/test_security.py
           tests/test_telegram_service.py
@@ -238,6 +244,30 @@ jobs:
           print(f"Seeded API smoke test passed with {data['total']} novels.")
           PY
 
+          ARCHIVEDB_BENCHMARK_PASSWORD=arcdb-dev-123 \
+            .venv/bin/python scripts/benchmark_http_routes.py \
+            --warmups 1 \
+            --repetitions 3 \
+            --profile ci-legacy \
+            --output data/http-performance-report.json
+          .venv/bin/python - <<'PY'
+          import json
+          report = json.load(open('data/http-performance-report.json', encoding='utf-8'))
+          assert report['status'] == 'ok', report
+          assert report['samples'] == 21, report
+          scenarios = {item['scenario']: item for item in report['scenarios']}
+          assert set(scenarios) == {
+              'library_page', 'library_search', 'novel_detail', 'reader_page',
+              'reader_chapter', 'collections', 'community',
+          }, scenarios
+          assert 'sqlite' in scenarios['library_page']['components_ms'], scenarios
+          assert {'sqlite', 'filesystem', 'epub'} <= set(
+              scenarios['reader_chapter']['components_ms']
+          ), scenarios
+          assert 'filesystem' in scenarios['community']['components_ms'], scenarios
+          print('Seeded HTTP performance workload passed.')
+          PY
+
   sqlite-state-migration:
     runs-on: ubuntu-latest
     steps:
@@ -265,6 +295,8 @@ jobs:
           tests/test_runtime_metadata.py
           tests/test_library_index.py
           tests/test_observability.py
+          tests/test_request_metrics.py
+          tests/test_http_benchmark.py
           tests/test_path_security.py
           tests/test_security.py
           tests/test_html_sanitizer.py

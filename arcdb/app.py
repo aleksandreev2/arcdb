@@ -76,6 +76,11 @@ from arcdb.html_sanitizer import sanitize_epub_html
 from arcdb.jobs import JobStore
 from arcdb.library_index import LibraryIndex, LibraryIndexUnavailable
 from arcdb.path_security import confined_child, confined_path
+from arcdb.request_metrics import (
+    observe_request_component,
+    request_component_timings,
+    reset_request_component_timings,
+)
 from arcdb.security import (
     OriginConfigurationError,
     parse_allowed_origins,
@@ -373,6 +378,7 @@ def begin_request_observation():
     g.request_id = uuid.uuid4().hex
     g.request_started_at = time.perf_counter()
     g.csp_nonce = secrets.token_urlsafe(24)
+    reset_request_component_timings()
 
 @app.before_request
 def enforce_state_change_origin():
@@ -482,15 +488,29 @@ def log_request(response):
         )
         response.headers.setdefault("X-Request-ID", request_id)
 
+        component_timings = request_component_timings()
+        if component_timings:
+            response.headers["Server-Timing"] = ", ".join(
+                f"{name};dur={component_timings[name]:.3f}"
+                for name in ("sqlite", "filesystem", "epub", "job")
+                if name in component_timings
+            )
+
         if not (
             path.startswith(_ACCESS_LOG_SKIP_PREFIXES)
             or any(part in path for part in AUTO_BAN_IGNORE_CONTAINS)
         ):
             route = request.url_rule.rule if request.url_rule is not None else "unmatched"
+            component_fields = "".join(
+                f" {name}_ms={component_timings[name]:.3f}"
+                for name in ("sqlite", "filesystem", "epub", "job")
+                if name in component_timings
+            )
             print(
                 f"[REQUEST] request_id={_log_safe(request_id)} "
                 f"route={_log_safe(route)} method={_log_safe(request.method)} "
                 f"status={response.status_code} duration_ms={duration_ms:.3f}"
+                f"{component_fields}"
             )
 
     except Exception:
@@ -822,17 +842,20 @@ def _safe_upload_filename(value, fallback):
     return name[:240] or fallback
 
 def _copy_upload_limited(storage, destination, max_bytes):
-    return copy_upload_limited(storage.stream, destination, max_bytes)
+    with observe_request_component("filesystem"):
+        return copy_upload_limited(storage.stream, destination, max_bytes)
 
 
 def _epub_limits():
     return EPUB_LIMITS
 
 def _validate_epub_archive(epub_path):
-    return validate_epub_archive(epub_path, _epub_limits())
+    with observe_request_component("epub"):
+        return validate_epub_archive(epub_path, _epub_limits())
 
 def _extract_epub_safely(epub_path, destination):
-    return extract_epub_safely(epub_path, destination, _epub_limits())
+    with observe_request_component("epub"):
+        return extract_epub_safely(epub_path, destination, _epub_limits())
 
 def _save_uploaded_cover(storage, upload_id):
     if not storage or not storage.filename:
@@ -2192,17 +2215,20 @@ def _mtime(path):
         return 0.0
 
 def load_gallery_data():
-    generation = LIBRARY_INDEX.generation()
+    with observe_request_component("sqlite"):
+        generation = LIBRARY_INDEX.generation()
     with _GALLERY_CACHE_LOCK:
         cache = _gallery_cache
         if cache["items"] and cache["gen"] == generation:
             return cache["items"]
-        items = LIBRARY_INDEX.all_items()
+        with observe_request_component("sqlite"):
+            items = LIBRARY_INDEX.all_items()
         cache.update(items=items, gen=generation)
         return items
 
 def find_novel(novel_id):
-    return LIBRARY_INDEX.lookup(str(novel_id).strip())
+    with observe_request_component("sqlite"):
+        return LIBRARY_INDEX.lookup(str(novel_id).strip())
 
 def novel_key(novel):
     return str(novel.get("id")) if novel.get("id") else novel.get("filename", "")
@@ -2909,8 +2935,9 @@ def _load_community_unlocked():
     return data
 
 def load_community():
-    with _COMMUNITY_DATA_LOCK:
-        return _load_community_unlocked()
+    with observe_request_component("filesystem"):
+        with _COMMUNITY_DATA_LOCK:
+            return _load_community_unlocked()
 
 def mutate_community(mutator):
     with _COMMUNITY_DATA_LOCK:
@@ -3023,7 +3050,8 @@ def _scan_epub_toc_titles(base_path):
     return titles_map
 
 def get_novel_toc_titles(novel):
-    return LIBRARY_INDEX.chapters(novel_key(novel))[1]
+    with observe_request_component("sqlite"):
+        return LIBRARY_INDEX.chapters(novel_key(novel))[1]
 
 def _scan_novel_toc(novel):
     base_path = novel_base_path(novel)
@@ -3077,10 +3105,12 @@ def rebuild_library_index():
     )
 
 def get_novel_toc(novel):
-    return LIBRARY_INDEX.chapters(novel_key(novel))[0]
+    with observe_request_component("sqlite"):
+        return LIBRARY_INDEX.chapters(novel_key(novel))[0]
 
 def get_novel_images(novel):
-    return LIBRARY_INDEX.images(novel_key(novel))
+    with observe_request_component("sqlite"):
+        return LIBRARY_INDEX.images(novel_key(novel))
 
 _MEDIA_REF_PATTERN = re.compile(r"(src=|href=|url\()(['\"]?)([^'\" \)>]+)\2([\s)>]|$)", re.IGNORECASE)
 
@@ -3669,15 +3699,16 @@ def api_library():
     target_sort = sort_by
     if filters["reading_status"] != "all" and sort_by == "views":
         target_sort = "last_read"
-    result = LIBRARY_INDEX.query(
-        filters=filters,
-        user_data=user_data,
-        sort_by=target_sort,
-        sort_order=sort_order,
-        page=page,
-        limit=limit,
-        random_one=bool(data.get("random")),
-    )
+    with observe_request_component("sqlite"):
+        result = LIBRARY_INDEX.query(
+            filters=filters,
+            user_data=user_data,
+            sort_by=target_sort,
+            sort_order=sort_order,
+            page=page,
+            limit=limit,
+            random_one=bool(data.get("random")),
+        )
     if data.get("random"):
         random_novel = result.get("random")
         return jsonify({"random_id": novel_key(random_novel) if random_novel else None})
@@ -4762,16 +4793,18 @@ def api_read_chapter(novel_id, chap_path):
     if not full_path or not os.path.isfile(full_path):
         return "Chapter file missing.", 404
     try:
-        with open(full_path, "r", encoding="utf-8", errors="ignore") as fh:
-            content = fh.read()
+        with observe_request_component("filesystem"):
+            with open(full_path, "r", encoding="utf-8", errors="ignore") as fh:
+                content = fh.read()
     except OSError:
         return "Chapter file unreadable.", 500
 
-    content = rewrite_chapter_assets(content, novel_id, clean_chap_path)
-    body_match = re.search(r"<body[^>]*>([\s\S]*?)</body>", content, re.IGNORECASE)
-    if body_match:
-        content = body_match.group(1)
-    return sanitize_epub_html(content)
+    with observe_request_component("epub"):
+        content = rewrite_chapter_assets(content, novel_id, clean_chap_path)
+        body_match = re.search(r"<body[^>]*>([\s\S]*?)</body>", content, re.IGNORECASE)
+        if body_match:
+            content = body_match.group(1)
+        return sanitize_epub_html(content)
 
 @app.route("/api/read/<novel_id>/asset/<path:asset_path>")
 @login_required
@@ -5154,8 +5187,9 @@ def epub_package_init():
         os.makedirs(sess_dir, exist_ok=False)
         os.makedirs(os.path.join(sess_dir, "images"), exist_ok=False)
         base_copy = os.path.join(sess_dir, "base.epub")
-        with open(local_path, "rb") as source:
-            copy_upload_limited(source, base_copy, MAX_EPUB_PACKAGE_SESSION_BYTES)
+        with observe_request_component("filesystem"):
+            with open(local_path, "rb") as source:
+                copy_upload_limited(source, base_copy, MAX_EPUB_PACKAGE_SESSION_BYTES)
 
         remote_urls = set()
         def add_remote_urls(pattern, content):
@@ -5167,19 +5201,20 @@ def epub_package_init():
                         "The base EPUB references too many remote images."
                     )
 
-        for _name, content in iter_epub_text_entries(base_copy, _epub_limits()):
-            add_remote_urls(
-                r'<img[^>]+src=[\"\'](https?://[^\s\"\'\<\>]+)[\"\']',
-                content,
-            )
-            add_remote_urls(
-                r'<image[^>]+(?:xlink:href|href)=[\"\'](https?://[^\s\"\'\<\>]+)[\"\']',
-                content,
-            )
-            add_remote_urls(
-                r'(https?://[^\s\"\'\<\>]+\.(?:file|jpg|jpeg|png|webp|gif|bmp)\b[^\s\"\'\<\>]*|https?://images\.novelpia\.com/[^\s\"\'\<\>]+)',
-                content,
-            )
+        with observe_request_component("epub"):
+            for _name, content in iter_epub_text_entries(base_copy, _epub_limits()):
+                add_remote_urls(
+                    r'<img[^>]+src=[\"\'](https?://[^\s\"\'\<\>]+)[\"\']',
+                    content,
+                )
+                add_remote_urls(
+                    r'<image[^>]+(?:xlink:href|href)=[\"\'](https?://[^\s\"\'\<\>]+)[\"\']',
+                    content,
+                )
+                add_remote_urls(
+                    r'(https?://[^\s\"\'\<\>]+\.(?:file|jpg|jpeg|png|webp|gif|bmp)\b[^\s\"\'\<\>]*|https?://images\.novelpia\.com/[^\s\"\'\<\>]+)',
+                    content,
+                )
     except Exception as e:
         shutil.rmtree(sess_dir, ignore_errors=True)
         return jsonify({"error": f"Failed reading base EPUB: {e}"}), 400
@@ -5364,18 +5399,20 @@ def _job_response(job):
 
 
 def _enqueue_epub_package_job(session_id):
-    sess_dir, _meta = _load_owned_epub_session(session_id)
+    with observe_request_component("filesystem"):
+        sess_dir, _meta = _load_owned_epub_session(session_id)
     if not sess_dir:
         return jsonify({"error": "Session not found"}), 404
-    job, created = PACKAGE_JOB_STORE.enqueue(
-        kind="epub_package",
-        owner_email=session.get("user_email", ""),
-        payload={"session_id": session_id},
-        dedupe_key=f"epub_package:{session_id}",
-        max_attempts=PACKAGE_JOB_MAX_ATTEMPTS,
-        timeout_seconds=PACKAGE_JOB_TIMEOUT_SECONDS,
-        retention_seconds=PACKAGE_JOB_RETENTION_SECONDS,
-    )
+    with observe_request_component("job"):
+        job, created = PACKAGE_JOB_STORE.enqueue(
+            kind="epub_package",
+            owner_email=session.get("user_email", ""),
+            payload={"session_id": session_id},
+            dedupe_key=f"epub_package:{session_id}",
+            max_attempts=PACKAGE_JOB_MAX_ATTEMPTS,
+            timeout_seconds=PACKAGE_JOB_TIMEOUT_SECONDS,
+            retention_seconds=PACKAGE_JOB_RETENTION_SECONDS,
+        )
     response = _job_response(job)
     response["created"] = created
     return jsonify(response), 202
@@ -5391,7 +5428,8 @@ def enqueue_package_job():
 @app.route("/api/jobs/<job_id>")
 @login_required
 def get_job(job_id):
-    job = PACKAGE_JOB_STORE.get_owned(job_id, session.get("user_email", ""))
+    with observe_request_component("job"):
+        job = PACKAGE_JOB_STORE.get_owned(job_id, session.get("user_email", ""))
     if job is None:
         return jsonify({"error": "Job not found"}), 404
     return jsonify(_job_response(job))
@@ -5400,10 +5438,12 @@ def get_job(job_id):
 @app.route("/api/jobs/<job_id>/cancel", methods=["POST"])
 @login_required
 def cancel_job(job_id):
-    state = PACKAGE_JOB_STORE.request_cancel(job_id, session.get("user_email", ""))
+    with observe_request_component("job"):
+        state = PACKAGE_JOB_STORE.request_cancel(job_id, session.get("user_email", ""))
     if state is None:
         return jsonify({"error": "Job not found"}), 404
-    job = PACKAGE_JOB_STORE.get_owned(job_id, session.get("user_email", ""))
+    with observe_request_component("job"):
+        job = PACKAGE_JOB_STORE.get_owned(job_id, session.get("user_email", ""))
     return jsonify(_job_response(job)), 202 if state == "processing" else 200
 
 @app.route("/api/epub_package/download/<session_id>")
