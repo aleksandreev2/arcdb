@@ -123,7 +123,12 @@ Implemented in repository:
 - central Origin/Referer enforcement for every state-changing HTTP method and
   POST-only logout; exact production origins remain inventory-gated;
 - directly tracked behavior-compatible Flask runtime/templates; bootstrap and runtime CI no longer depend on baseline materialization or text overlays.
-- upload streams are atomically published with one final flush/fsync; EPUB ingestion and packaging enforce bounded structure/CRC/path/link/duplicate/size/ratio checks, atomic extraction and owner-limited package sessions; finalization streams archive entries instead of retaining the complete archive in RAM.
+- upload streams are atomically published with one final flush/fsync; EPUB ingestion
+  and packaging enforce bounded structure/CRC/path/link/duplicate/size/ratio checks,
+  atomic extraction and owner-limited package sessions; pending assets are
+  owner/admin-scoped and mutable stored paths are symlink-aware and storage-root
+  confined; finalization streams archive entries instead of retaining the complete
+  archive in RAM.
 
 SQLite is **not** the default or production read source. Phase 3 now exposes `STATE_READ_BACKEND=legacy|sqlite`; local/CI can run the same authenticated API flows against both backends, while `legacy` remains default. Phase 3B adds `STATE_READ_SHADOW_COMPARE=1` for legacy-served requests: SQLite is read only for equality checking and payload-free match/mismatch/error events, so non-strict observation cannot replace or damage the authoritative response.
 

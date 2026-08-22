@@ -536,3 +536,29 @@ known-safe output is easier to audit and fails closed. Python's parser is suffic
 for this deliberately narrow fragment policy and avoids adding a new production
 dependency. Dropping inline EPUB style and SVG/MathML is an explicit security versus
 fidelity tradeoff until a separately reviewed richer policy is justified.
+
+## ADR-029 — Fail closed on upload ownership and mutable stored paths
+
+Status: accepted and implemented for repository/local/CI runtime.
+
+Decision:
+
+- expose pending upload covers only to the authenticated uploader or an admin and
+  return 404 to unrelated users; retain authenticated-reader access after approval;
+- retain admin-only approval/rejection and owner-only package session/job controls;
+- treat every EPUB, cover, extracted-folder and download path read from mutable
+  metadata as untrusted;
+- resolve candidate/root paths through symlinks and require component-aware
+  containment with `commonpath`, rejecting root, traversal, sibling-prefix,
+  cross-drive and symlink escapes;
+- apply the same helper before reads, sends, extraction targets and deletion while
+  leaving invalid metadata and user files untouched.
+
+Reasoning:
+
+Authentication alone did not prevent an unrelated account from viewing an
+unapproved cover, and string-prefix path checks can accept sibling directories such
+as `structured_output_evil`. Metadata is mutable operational state and cannot be a
+filesystem authorization boundary. A single realpath-aware confinement primitive
+keeps normal absolute/relative deployments compatible while making corrupted or
+hostile stored values fail closed. No state migration is needed.

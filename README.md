@@ -238,6 +238,12 @@ owner-only status endpoint while `scripts/run_packager.py` streams and atomicall
 publishes the result in a separate process. Retry, heartbeat, timeout, cancellation,
 stale restart recovery and expiry cleanup are stored in a dedicated SQLite WAL queue.
 
+Pending novel cover assets are visible only to their authenticated uploader and
+admins; after approval they are available to authenticated library readers. Every
+EPUB, cover, extracted-folder and local-download path loaded from mutable metadata
+is resolved through symlinks and confined to its configured storage root, including
+component-aware rejection of traversal and sibling-prefix paths.
+
 Local `start.bat` launches web and packager as separate child processes. Production
 service setup remains inventory-gated; see `docs/ASYNC_PACKAGER.md` and the systemd
 template under `deploy/systemd/`.

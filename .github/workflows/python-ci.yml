@@ -28,6 +28,7 @@ jobs:
           arcdb/jobs.py
           arcdb/library_index.py
           arcdb/observability.py
+          arcdb/path_security.py
           arcdb/security.py
           arcdb/package_worker.py
           arcdb/telegram_gateway.py
@@ -80,6 +81,7 @@ jobs:
           tests/test_jobs.py
           tests/test_library_index.py
           tests/test_observability.py
+          tests/test_path_security.py
           tests/test_security.py
           tests/test_telegram_service.py
           tests/test_tracked_runtime.py
@@ -256,6 +258,7 @@ jobs:
           tests/test_runtime_metadata.py
           tests/test_library_index.py
           tests/test_observability.py
+          tests/test_path_security.py
           tests/test_security.py
           tests/test_html_sanitizer.py
           tests/test_tracked_runtime.py

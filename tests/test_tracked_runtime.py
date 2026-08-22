@@ -34,6 +34,7 @@ class TrackedRuntimeSourceTests(unittest.TestCase):
         self.assertTrue(TRACKED_APP.is_file())
         self.assertTrue((ROOT / "arcdb" / "jobs.py").is_file())
         self.assertTrue((ROOT / "arcdb" / "library_index.py").is_file())
+        self.assertTrue((ROOT / "arcdb" / "path_security.py").is_file())
         self.assertTrue((ROOT / "arcdb" / "package_worker.py").is_file())
         self.assertTrue((ROOT / "scripts" / "run_packager.py").is_file())
         self.assertTrue((ROOT / "arcdb" / "telegram_gateway.py").is_file())
@@ -216,6 +217,23 @@ class TrackedRuntimeSourceTests(unittest.TestCase):
         ):
             runtime = (ROOT / "tests" / workflow).read_text(encoding="utf-8")
             self.assertIn("ARCHIVEDB_TEST_ORIGIN", runtime)
+
+    def test_upload_assets_and_stored_paths_fail_closed(self) -> None:
+        text = TRACKED_APP.read_text(encoding="utf-8")
+        self.assertIn("from arcdb.path_security import confined_child, confined_path", text)
+        cover_start = text.index("def api_uploaded_cover")
+        cover_end = text.index("# 12. ROUTES - COMMUNITY", cover_start)
+        cover_route = text[cover_start:cover_end]
+        self.assertIn('record.get("approved")', cover_route)
+        self.assertIn('record.get("uploader_email")', cover_route)
+        self.assertIn("current_user not in ADMIN_EMAILS", cover_route)
+        self.assertIn("confined_path(", cover_route)
+
+        download_start = text.index("def download_file")
+        download_end = text.index("# 12.1 CLIENT-FETCHED", download_start)
+        download_route = text[download_start:download_end]
+        self.assertIn("confined_path(local_path, root)", download_route)
+        self.assertNotIn("local_path.startswith", download_route)
 
     def test_library_and_reader_runtime_paths_use_persistent_index(self) -> None:
         text = TRACKED_APP.read_text(encoding="utf-8")

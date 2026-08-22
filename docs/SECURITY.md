@@ -66,9 +66,35 @@ forbidden void elements. The real legacy/SQLite reader parity workflow also serv
 a malicious seeded chapter and asserts the response contains safe content but none
 of the executable constructs.
 
+## Upload ownership and stored-path confinement
+
+Status: implemented for repository/local/CI runtime. Package sessions/jobs already
+enforced owner identity; this completes the review of the remaining novel-upload
+asset surfaces. Production enablement remains part of the reconciled runtime rollout.
+
+- upload records receive a server-generated identifier and the authenticated email
+  is stored as owner; clients cannot choose either value;
+- pending cover assets return 404 unless requested by that owner or an admin;
+- approved covers remain available to authenticated library readers;
+- approval and rejection remain admin-only;
+- package session mutation/download and job status/cancellation remain owner-only;
+- EPUB, cover and extracted-folder paths loaded from mutable metadata are resolved
+  through symlinks and must remain within their configured storage root;
+- local downloads use the same component-aware confinement rule, eliminating
+  sibling-prefix acceptance such as `structured_output_evil`.
+
+Path validation fails closed on empty, malformed, absolute escape, `..`, sibling
+prefix, cross-drive and symlink escape values. Invalid metadata is not followed,
+served or deleted. This does not rewrite metadata or move user files.
+
+Pure tests cover normal descendants, root handling, traversal, absolute children,
+sibling-prefix paths and symlink escapes where the platform permits them. The real
+metadata workflow uploads a pending cover as a normal user, verifies owner/admin
+access and unrelated-user denial, approves it, then verifies authenticated library
+access and complete legacy/SQLite parity.
+
 ## Remaining Phase 11 work
 
-- complete the ownership review for non-package upload/session surfaces;
 - tighten CSP after inline CSS/JS is split;
 - inventory-gate origin-network restrictions, secret ownership/rotation and admin
   audit retention.

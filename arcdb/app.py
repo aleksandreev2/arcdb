@@ -75,6 +75,7 @@ from arcdb.epub_io import (
 from arcdb.html_sanitizer import sanitize_epub_html
 from arcdb.jobs import JobStore
 from arcdb.library_index import LibraryIndex, LibraryIndexUnavailable
+from arcdb.path_security import confined_child, confined_path
 from arcdb.security import (
     OriginConfigurationError,
     parse_allowed_origins,
@@ -1796,16 +1797,22 @@ def _uploaded_gallery_item(upload_id, record):
     if not isinstance(record, dict) or not record.get("approved", False):
         return None
     folder_name = str(record.get("local_folder") or "").strip()
-    folder_path = os.path.join(LOCAL_OUTPUT_DIR, folder_name) if folder_name else ""
-    has_local_read = bool(folder_name and os.path.isdir(folder_path))
-    cover_file_path = str(record.get("cover_file_path") or "")
+    folder_path = confined_child(LOCAL_OUTPUT_DIR, folder_name) if folder_name else None
+    has_local_read = bool(folder_path and os.path.isdir(folder_path))
+    cover_file_path = confined_path(
+        str(record.get("cover_file_path") or ""), USER_UPLOAD_COVER_DIR
+    )
     cover_url = (
         f"/api/upload/{quote(str(upload_id), safe='')}/asset/cover"
         if cover_file_path and os.path.isfile(cover_file_path)
         else ""
     )
-    raw_epub_path = str(record.get("raw_epub_path") or "")
-    translated_epub_path = str(record.get("translated_epub_path") or "")
+    raw_epub_path = confined_path(
+        str(record.get("raw_epub_path") or ""), USER_UPLOAD_EPUB_DIR
+    )
+    translated_epub_path = confined_path(
+        str(record.get("translated_epub_path") or ""), USER_UPLOAD_EPUB_DIR
+    )
     raw_original_name = str(record.get("raw_original_name") or "")
     translated_original_name = str(record.get("translated_original_name") or "")
     return {
@@ -1831,16 +1838,22 @@ def _uploaded_gallery_item(upload_id, record):
         "tg_link": "",
         "raw_tg_link": "",
         "translated_epub_path": (
-            translated_epub_path if os.path.isfile(translated_epub_path) else ""
+            translated_epub_path
+            if translated_epub_path and os.path.isfile(translated_epub_path)
+            else ""
         ),
-        "raw_epub_path": raw_epub_path if os.path.isfile(raw_epub_path) else "",
+        "raw_epub_path": (
+            raw_epub_path if raw_epub_path and os.path.isfile(raw_epub_path) else ""
+        ),
         "uploader_email": str(record.get("uploader_email") or ""),
         "uploader_name": _format_uploader_name(
             record.get("uploader_name") or record.get("uploader_email")
         ),
         "local_folder": folder_name if has_local_read else "",
         "has_local_read": has_local_read,
-        "is_raw_only": not bool(translated_epub_path),
+        "is_raw_only": not bool(
+            translated_epub_path and os.path.isfile(translated_epub_path)
+        ),
         "_library_key": f"user-upload:{upload_id}",
         "_source_ids": [],
     }
@@ -3929,7 +3942,14 @@ def api_uploaded_cover(upload_id):
     record = load_user_uploads().get(str(upload_id))
     if not isinstance(record, dict):
         return "Not found", 404
-    cover_path = str(record.get("cover_file_path") or "")
+    current_user = str(session.get("user_email") or "").strip().lower()
+    owner = str(record.get("uploader_email") or "").strip().lower()
+    if not record.get("approved") and current_user not in ADMIN_EMAILS:
+        if not owner or current_user != owner:
+            return "Not found", 404
+    cover_path = confined_path(
+        str(record.get("cover_file_path") or ""), USER_UPLOAD_COVER_DIR
+    )
     if not cover_path or not os.path.isfile(cover_path):
         return "Not found", 404
     return send_file(
@@ -4255,12 +4275,19 @@ def admin_access():
             if not record or record.get("approved"):
                 message = "Upload not found or already approved."
             else:
-                reading_epub = record.get("translated_epub_path") or record.get("raw_epub_path")
+                reading_epub = confined_path(
+                    record.get("translated_epub_path") or record.get("raw_epub_path") or "",
+                    USER_UPLOAD_EPUB_DIR,
+                )
                 folder_name = record.get("local_folder")
-                final_dir = os.path.join(LOCAL_OUTPUT_DIR, folder_name) if folder_name else ""
+                final_dir = (
+                    confined_child(LOCAL_OUTPUT_DIR, str(folder_name))
+                    if folder_name
+                    else None
+                )
 
-                if not reading_epub or not os.path.isfile(reading_epub):
-                    message = "Error: EPUB file is missing from server storage."
+                if not reading_epub or not os.path.isfile(reading_epub) or not final_dir:
+                    message = "Error: Upload storage metadata is invalid or missing."
                 else:
                     try:
                         _extract_epub_safely(reading_epub, final_dir)
@@ -4306,14 +4333,19 @@ def admin_access():
                 message = "Upload not found."
             else:
                 # Delete stored files
-                originals_dir = os.path.join(USER_UPLOAD_EPUB_DIR, upload_id)
-                shutil.rmtree(originals_dir, ignore_errors=True)
+                originals_dir = confined_child(USER_UPLOAD_EPUB_DIR, upload_id)
+                if originals_dir:
+                    shutil.rmtree(originals_dir, ignore_errors=True)
 
                 folder_name = record.get("local_folder")
                 if folder_name:
-                    shutil.rmtree(os.path.join(LOCAL_OUTPUT_DIR, folder_name), ignore_errors=True)
+                    local_folder = confined_child(LOCAL_OUTPUT_DIR, str(folder_name))
+                    if local_folder:
+                        shutil.rmtree(local_folder, ignore_errors=True)
 
-                cover_path = record.get("cover_file_path")
+                cover_path = confined_path(
+                    record.get("cover_file_path") or "", USER_UPLOAD_COVER_DIR
+                )
                 if cover_path and os.path.isfile(cover_path):
                     try:
                         os.remove(cover_path)
@@ -4874,19 +4906,21 @@ def download_file(novel_ref):
     )
     if local_path:
         local_path = os.path.realpath(str(local_path))
-        upload_root = os.path.realpath(USER_UPLOAD_EPUB_DIR)
-        structured_root = os.path.realpath(STRUCTURED_OUTPUT_DIR)
-        batched_root = os.path.realpath(BATCHED_EPUBS_DIR)
-        is_allowed = (
-            local_path.startswith(upload_root + os.sep)
-            or local_path.startswith(structured_root + os.sep)
-            or local_path == structured_root
-            or local_path.startswith(structured_root)
-            or local_path.startswith(batched_root + os.sep)
-            or local_path == batched_root
+        confined_local_path = next(
+            (
+                resolved
+                for root in (
+                    USER_UPLOAD_EPUB_DIR,
+                    STRUCTURED_OUTPUT_DIR,
+                    BATCHED_EPUBS_DIR,
+                )
+                if (resolved := confined_path(local_path, root)) is not None
+            ),
+            None,
         )
-        if not (is_allowed and os.path.isfile(local_path)):
+        if not confined_local_path or not os.path.isfile(confined_local_path):
             return "File is unavailable.", 404
+        local_path = confined_local_path
 
         download_name = (
             novel.get("raw_original_name") if want_raw else novel.get("translated_original_name")

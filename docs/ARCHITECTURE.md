@@ -98,6 +98,12 @@ limits. Non-text entries are copied in bounded chunks and package publication is
 atomic. Final packaging now runs through the persistent worker; init and bounded
 client image upload remain HTTP operations.
 
+Upload and package assets are authorization-scoped. Pending covers are owner/admin
+only, package sessions and jobs are owner-only, and approval/rejection is admin-only.
+All persisted EPUB/cover/extracted/download paths cross a shared realpath + common
+path confinement boundary before the runtime reads, serves, extracts to or deletes
+them. Invalid mutable metadata fails closed without changing the stored record.
+
 ## 6. Near-term target architecture
 
 ```text
@@ -301,7 +307,8 @@ Review/add:
 - CSRF/same-origin controls for state-changing endpoints;
 - parser-based allowlist HTML sanitization for user EPUB content (implemented in
   repository/local/CI; production enablement pending reconciliation);
-- upload type/size/session ownership limits;
+- upload type/size/session ownership and stored-path confinement (implemented in
+  repository/local/CI; production enablement pending reconciliation);
 - separation of secrets from repository;
 - Cloudflare/origin network restrictions.
 
