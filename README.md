@@ -325,6 +325,11 @@ All state-changing HTTP methods require an allowed browser origin before route
 dispatch, and logout is POST-only. Production must set the exact public
 `ARCHIVEDB_ALLOWED_ORIGINS`; see `docs/SECURITY.md`.
 
+Reader chapter responses are reconstructed by a parser-based explicit
+tag/attribute/URL allowlist. Executable and embedded markup, event handlers, inline
+styles and dangerous URL schemes are removed; malformed active markup fails closed.
+See `docs/SECURITY.md` for the compatibility and verification contract.
+
 ## Repository layout
 
 ```text

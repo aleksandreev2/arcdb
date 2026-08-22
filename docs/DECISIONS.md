@@ -508,3 +508,31 @@ The index also removes incidental custom-metadata reads from `/api/library`.
 Therefore bounded shadow observation uses an explicit admin-only, payload-free
 state-read probe for all schema-v3 domains instead of depending on side effects of a
 filesystem scan. This keeps coverage stable as request paths become more efficient.
+
+## ADR-028 — Reconstruct EPUB chapter HTML from an explicit parser allowlist
+
+Status: accepted and implemented for repository/local/CI runtime.
+
+Decision:
+
+- replace regex removal as the reader's security boundary with a standard-library
+  HTML parser and explicit tag, attribute and URL-scheme allowlists;
+- drop complete executable, embedded and foreign-namespace subtrees, including
+  script, style, iframe, object, SVG and MathML;
+- strip inline style, event handlers, comments, processing instructions and unknown
+  attributes while preserving common semantic EPUB markup and rewritten relative
+  reader asset URLs;
+- accept only relative/fragment URLs or `http`, `https` and `mailto`, after
+  browser-relevant control/whitespace normalization;
+- make malformed active markup fail closed and reconstruct balanced escaped output;
+- keep this boundary dependency-free and cover both the pure sanitizer and real
+  legacy/SQLite reader endpoints with hostile fixtures.
+
+Reasoning:
+
+Regex substitutions cannot model HTML parsing, entity decoding, duplicate
+attributes, malformed nesting or foreign namespaces reliably. Reconstructing only
+known-safe output is easier to audit and fails closed. Python's parser is sufficient
+for this deliberately narrow fragment policy and avoids adding a new production
+dependency. Dropping inline EPUB style and SVG/MathML is an explicit security versus
+fidelity tradeoff until a separately reviewed richer policy is justified.

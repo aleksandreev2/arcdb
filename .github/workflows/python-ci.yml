@@ -24,6 +24,7 @@ jobs:
           python -m py_compile
           arcdb/app.py
           arcdb/epub_io.py
+          arcdb/html_sanitizer.py
           arcdb/jobs.py
           arcdb/library_index.py
           arcdb/observability.py
@@ -75,6 +76,7 @@ jobs:
           tests/test_runtime_users.py
           tests/test_runtime_metadata.py
           tests/test_epub_io.py
+          tests/test_html_sanitizer.py
           tests/test_jobs.py
           tests/test_library_index.py
           tests/test_observability.py
@@ -255,6 +257,7 @@ jobs:
           tests/test_library_index.py
           tests/test_observability.py
           tests/test_security.py
+          tests/test_html_sanitizer.py
           tests/test_tracked_runtime.py
           tests/test_dev_seed.py
       - name: Run read-only cutover readiness preflight

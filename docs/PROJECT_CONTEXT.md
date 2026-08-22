@@ -224,7 +224,9 @@ Bounded shadow-log audit (one process log per invocation):
    confirmed or measured on production storage.
 5. Frontend HTML files contain large inline CSS/JS.
 6. Community uses frequent polling.
-7. User EPUB sanitization uses regex-style HTML cleaning rather than a robust allowlist parser.
+7. User EPUB chapter responses now use a parser and explicit tag/attribute/URL
+   allowlists; production enablement remains tied to the reconciled tracked-runtime
+   rollout.
 8. State-changing routes are centrally origin-protected in repository/local/CI;
    exact production origins remain inventory-gated. Web health/readiness and
    baseline request timing are implemented; production probe, retention and alert

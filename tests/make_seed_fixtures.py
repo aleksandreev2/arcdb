@@ -21,9 +21,22 @@ def make_epub(path: Path, title: str, chapters: int = 3) -> None:
         zf.writestr("META-INF/container.xml", container)
         zf.writestr("OEBPS/content.opf", opf)
         for i in range(1, chapters + 1):
+            chapter_body = f"<h1>Chapter {i}</h1><p>fixture</p>"
+            is_reader_security_fixture = (
+                "422601" in title
+                or "Я_стал_куратором_охотников_S-ранга" in title
+            )
+            if is_reader_security_fixture and i == 1:
+                chapter_body += (
+                    '<script>window.arcdbUnsafe = true</script>'
+                    '<p onclick="window.arcdbUnsafe = true">safe after script</p>'
+                    '<a href="jav&#x61;script:alert(1)">unsafe link</a>'
+                    '<svg><script>alert(2)</script></svg>'
+                    '<embed src="unsafe"><p>safe after void element</p>'
+                )
             zf.writestr(
                 f"OEBPS/chapter{i}.xhtml",
-                f"<html><body><h1>Chapter {i}</h1><p>fixture</p></body></html>",
+                f"<html><body>{chapter_body}</body></html>",
             )
 
 
