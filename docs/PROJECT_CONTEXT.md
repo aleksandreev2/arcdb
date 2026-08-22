@@ -119,7 +119,8 @@ Implemented in repository:
 - read-only host discovery plus explicit-path structured production inventory and materialized-baseline reconciliation, with separate private and path-free reports.
 - WAL-aware SQLite online backup with SHA-256 manifest, database integrity checks, temporary runtime restore verification and safe new-target-only restore tooling.
 - payload-free web liveness/readiness endpoints, per-response request IDs and bounded
-  request timing events with a p50/p95/p99 summarizer;
+  request timing events with bounded SQLite/filesystem/EPUB/job components, a
+  p50/p95/p99 summarizer and a loopback-only seeded HTTP workload;
 - central Origin/Referer enforcement for every state-changing HTTP method and
   POST-only logout; exact production origins remain inventory-gated;
 - per-response nonce-only script CSP with script attributes/CDN fallback disabled;
@@ -237,8 +238,8 @@ Bounded shadow-log audit (one process log per invocation):
    rollout.
 8. State-changing routes are centrally origin-protected in repository/local/CI;
    exact production origins remain inventory-gated. Web health/readiness and
-   baseline request timing are implemented; production probe, retention and alert
-   configuration also remains inventory-gated.
+   reproducible HTTP/upload/job/library/EPUB baselines are implemented; production
+   probe, retention, alert and capacity measurement remain inventory-gated.
 
 ## Target architecture
 

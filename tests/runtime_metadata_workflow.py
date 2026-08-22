@@ -42,6 +42,7 @@ class ApiClient:
         self.opener = urllib.request.build_opener(
             urllib.request.HTTPCookieProcessor(cookies)
         )
+        self.last_server_timing = ""
 
     def authenticate_fixture(self, email: str) -> None:
         fixture_app = Flask("arcdb-metadata-workflow")
@@ -72,9 +73,11 @@ class ApiClient:
             response = self.opener.open(request, timeout=60)
             status = response.status
             body = response.read()
+            self.last_server_timing = response.headers.get("Server-Timing", "")
         except urllib.error.HTTPError as exc:
             status = exc.code
             body = exc.read()
+            self.last_server_timing = exc.headers.get("Server-Timing", "")
         if status != expected_status:
             raise AssertionError(
                 f"{path} returned HTTP {status}, expected {expected_status}: "
@@ -237,6 +240,11 @@ def main() -> int:
         file_bytes=fixture.read_bytes(),
         cover_bytes=b"\x89PNG\r\n\x1a\nfixture",
     )
+    assert {"filesystem", "epub"} <= {
+        part.split(";", 1)[0].strip()
+        for part in uploader.last_server_timing.split(",")
+        if part.strip()
+    }, uploader.last_server_timing
     upload_id = str(uploaded["id"])
     cover_url = f"/api/upload/{urllib.parse.quote(upload_id, safe='')}/asset/cover"
     uploader.request(cover_url)

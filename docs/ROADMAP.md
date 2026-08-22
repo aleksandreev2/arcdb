@@ -285,15 +285,17 @@ Some items can occur earlier when touching related code:
 
 ## Phase 12 — performance tuning based on measurements
 
-Status: baseline request timing instrumentation is implemented in repository/local
-CI; production measurements and tuning remain pending.
+Status: total request timing, bounded SQLite/filesystem/EPUB/job component timing,
+a sanitized p50/p95/p99 log summarizer, a loopback-only seeded HTTP workload and
+upload/job/library/EPUB synthetic baselines are implemented in repository/local/CI.
+Production measurements and tuning remain pending.
 
 After process-local state is removed/split:
 
 - benchmark Gunicorn process/thread combinations;
 - inspect Block Volume I/O;
 - adjust VPU tier only if measured I/O remains a bottleneck;
-- extend request timing with bounded subsystem/job timings where measurements justify it;
+- extend component timing only where a measured blind spot justifies it;
 - tune caching based on hit rates, not guesses.
 
 ## Current immediate order
@@ -306,13 +308,15 @@ After process-local state is removed/split:
 5. stop legacy writes domain-by-domain
 6. production-enable the implemented Telethon split after inventory
 7. production-enable the implemented persistent library index after inventory
-8. security/observability and measured performance work (next repository-side stage)
+8. measured production performance and capacity tuning after inventory
 9. R2/Cloudflare optimization
 ```
 
-Without live-production inputs, Phase 11 security/observability is the next
-independent repository-side stage; state read-cutover, library index, packager and
-Telegram production enablement remain operator-gated rather than guessed.
+Without live-production inputs, the repository-side security/observability and
+repeatable local baseline work is complete. The behavior-preserving static CSS
+split that removes the remaining style CSP exception is the next independent stage;
+state read-cutover, capacity tuning, library index, packager and Telegram production
+enablement remain operator-gated rather than guessed.
 
 ## Explicit non-goals for now
 
