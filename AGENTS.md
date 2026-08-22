@@ -77,6 +77,7 @@ Completed:
 - Phase 3C shadow-observation evidence validation plus a real Flask SQLite-canary -> legacy rollback rehearsal in CI.
 - read-only production discovery, structured private inventory, path-free reporting and deterministic source reconciliation tooling; live execution is still pending.
 - WAL-aware SQLite online backup, sanitized checksum manifest, independent runtime restore verification and new-target-only restore tooling.
+- behavior-compatible Flask runtime and templates tracked directly under `arcdb/`; local startup and runtime CI no longer materialize `.b64` baseline parts or apply overlays.
 
 Still pending:
 
@@ -145,18 +146,16 @@ Do not skip phases:
 
 See `docs/STORAGE_MIGRATION.md` and `docs/PRODUCTION_SAFETY.md`.
 
-## Transitional baseline overlay
+## Tracked runtime source and historical baseline
 
-The archived Flask monolith is still stored as a verified compressed baseline and reconstructed into `.runtime/source/`.
+The repository/local/CI runtime entrypoint is `arcdb/app.py`, with templates in
+`arcdb/templates/`. Edit these tracked files directly. `start.bat` and runtime CI
+must not reconstruct source from `.b64` parts or apply text overlays before launch.
 
-Until the source is moved into a normal directly tracked package, small runtime migration hooks are applied by `scripts/runtime_overlays.py` during `scripts/materialize_baseline.py`.
-
-Rules:
-
-- overlays must use exact/fail-closed matches;
-- an unexpected baseline change must fail materialization rather than patch the wrong code;
-- overlay changes participate in the runtime materialization hash;
-- this mechanism is temporary and should disappear when the Flask source becomes normally tracked/refactored.
+The verified compressed bundle, `scripts/materialize_baseline.py` and
+`scripts/runtime_overlays.py` are retained only as historical provenance and as the
+behavior-compatible archived reference used by source reconciliation. They are not
+runtime build steps. Do not add new runtime behavior through overlays.
 
 ## Target architecture direction
 

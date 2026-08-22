@@ -101,7 +101,8 @@ On a trusted engineering machine at the exact repository commit being evaluated:
 python3 scripts/materialize_baseline.py --force
 ```
 
-Transfer the private inventory through protected operator storage, then compare the production source with the behavior-compatible materialized baseline:
+Transfer the private inventory through protected operator storage, then compare the
+production source with the behavior-compatible historical layout:
 
 ```bash
 PYTHONPATH=. python3 scripts/reconcile_production_inventory.py \
@@ -110,6 +111,14 @@ PYTHONPATH=. python3 scripts/reconcile_production_inventory.py \
   --private-report /new/private/path/production-reconciliation-private.json \
   --report /new/private/path/production-reconciliation-report.json
 ```
+
+This explicit materialization is a reconciliation/provenance operation only. The
+repository application now runs directly from `arcdb/app.py` and
+`arcdb/templates/`; it does not launch `.runtime/source`. The tracked source was
+imported directly from the behavior-compatible materialized runtime, with trailing
+whitespace normalized only. For later commits, separately review the Git changes from
+that import point as the proposed deployment delta. Do not mistake the historical
+reference tree for the current runtime build path.
 
 The private reconciliation lists exact relative source filenames that are missing from production, changed in production or unknown in production. It also lists metadata filenames outside the repository's known legacy inventory. The sanitized report exposes counts only.
 

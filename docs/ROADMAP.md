@@ -13,6 +13,21 @@ Status: completed.
 - local EPUB fixtures/seed.
 - CI smoke tests.
 
+## Phase 0B — tracked runtime source
+
+Status: completed.
+
+- behavior-compatible materialized Flask source is tracked as `arcdb/app.py`;
+- all eight runtime templates are tracked under `arcdb/templates/`;
+- local bootstrap and runtime CI launch tracked source directly;
+- runtime behavior no longer depends on `.b64` extraction or text overlays;
+- the compressed baseline/materializer/overlay remain historical provenance and
+  reconciliation tools only.
+
+The monolith has intentionally not been split or redesigned in this phase. Direct
+source ownership is the prerequisite for the later I/O, security, jobs and process
+separation changes.
+
 ## Phase 1 — migration safety + SQLite shadow foundation
 
 Status: completed for the current state scope.

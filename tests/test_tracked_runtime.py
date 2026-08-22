@@ -1,15 +1,65 @@
 from __future__ import annotations
 
+import importlib.util
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-GALLERY_APP = ROOT / ".runtime" / "source" / "gallery_app.py"
+TRACKED_APP = ROOT / "arcdb" / "app.py"
+TRACKED_TEMPLATES = ROOT / "arcdb" / "templates"
+BOOTSTRAP_PATH = ROOT / "scripts" / "dev_bootstrap.py"
+WORKFLOW_DIR = ROOT / ".github" / "workflows"
 
 
-class RuntimeOverlayTests(unittest.TestCase):
-    def test_runtime_state_routes_are_shadow_wired(self) -> None:
-        text = GALLERY_APP.read_text(encoding="utf-8")
+def _load_bootstrap_module():
+    spec = importlib.util.spec_from_file_location("arcdb_dev_bootstrap", BOOTSTRAP_PATH)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Could not load dev bootstrap module.")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class TrackedRuntimeSourceTests(unittest.TestCase):
+    def test_bootstrap_uses_tracked_source_without_materialization(self) -> None:
+        bootstrap = _load_bootstrap_module()
+        self.assertEqual(bootstrap.ensure_source(), TRACKED_APP)
+
+        bootstrap_text = BOOTSTRAP_PATH.read_text(encoding="utf-8")
+        self.assertNotIn("materialize_baseline", bootstrap_text)
+        self.assertNotIn("runtime_overlays", bootstrap_text)
+        self.assertNotIn(".runtime", bootstrap_text)
+
+    def test_required_runtime_files_are_tracked(self) -> None:
+        self.assertTrue(TRACKED_APP.is_file())
+        expected_templates = {
+            "community.html",
+            "forgot_password.html",
+            "gallery.html",
+            "login.html",
+            "reader.html",
+            "register.html",
+            "reset_password.html",
+            "verify.html",
+        }
+        self.assertEqual(
+            {path.name for path in TRACKED_TEMPLATES.glob("*.html")},
+            expected_templates,
+        )
+
+    def test_runtime_workflows_do_not_launch_materialized_source(self) -> None:
+        workflows = {
+            path.name: path.read_text(encoding="utf-8")
+            for path in WORKFLOW_DIR.glob("*.yml")
+        }
+        combined = "\n".join(workflows.values())
+        self.assertNotIn(".runtime/source/gallery_app.py", combined)
+        self.assertNotIn("tests/test_runtime_overlays.py", combined)
+        self.assertIn("arcdb/app.py", workflows["read-backend-parity.yml"])
+        self.assertIn("tests/test_tracked_runtime.py", combined)
+
+    def test_runtime_state_routes_remain_wired(self) -> None:
+        text = TRACKED_APP.read_text(encoding="utf-8")
         expected = (
             'shadow_reason="user_status"',
             'shadow_reason="bulk_remove"',

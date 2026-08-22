@@ -174,7 +174,7 @@ If a strict local mirror fails after JSON succeeded, the request/test may fail l
 
 ## ADR-012 — Runtime overlay is temporary fail-closed migration plumbing
 
-Status: accepted temporarily.
+Status: superseded by ADR-023; retained as historical migration context.
 
 Decision:
 
@@ -371,3 +371,26 @@ backup API provides SQLite-consistent snapshot semantics. A required runtime res
 test detects unusable artifacts before retention or cutover, and new-target-only
 publication prevents recovery tooling from becoming an accidental destructive
 database replacement mechanism.
+
+## ADR-023 — Run ArchiveDB from directly tracked source
+
+Status: accepted and implemented for repository/local/CI runtime.
+
+Decision:
+
+- track the behavior-compatible Flask entrypoint at `arcdb/app.py` and its templates
+  under `arcdb/templates/`;
+- launch this tracked entrypoint directly from local bootstrap and runtime CI;
+- retain the compressed baseline, materializer and overlay only for historical
+  provenance and archived-source reconciliation;
+- prohibit new runtime behavior from being introduced through text overlays;
+- defer internal monolith splitting to separate behavior-preserving stages.
+
+Reasoning:
+
+The baseline/overlay mechanism made every runtime change depend on a generated,
+ignored file and fragile exact string replacements. A behavior-identical tracked
+import (with trailing whitespace normalized only) keeps current API/UI behavior while
+making subsequent I/O, security, jobs and process separation changes normal
+reviewable Git edits. Keeping the original verified bundle preserves provenance
+without making it a production or development build dependency.

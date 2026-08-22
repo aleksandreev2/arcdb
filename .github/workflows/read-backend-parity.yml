@@ -30,10 +30,10 @@ jobs:
           PYTHONPATH=. PORT=5004 STATE_READ_BACKEND=legacy \
             STATE_READ_SHADOW_COMPARE=1 STATE_READ_SHADOW_STRICT=1 \
             STATE_READ_SHADOW_REPORT_EVERY=1 ARCHIVEDB_AUTH_TEST_MODE=1 \
-            .venv/bin/python .runtime/source/gallery_app.py > legacy-server.log 2>&1 &
+            .venv/bin/python arcdb/app.py > legacy-server.log 2>&1 &
           LEGACY_PID=$!
           PYTHONPATH=. PORT=5005 STATE_READ_BACKEND=sqlite ARCHIVEDB_AUTH_TEST_MODE=1 \
-            .venv/bin/python .runtime/source/gallery_app.py > sqlite-server.log 2>&1 &
+            .venv/bin/python arcdb/app.py > sqlite-server.log 2>&1 &
           CANDIDATE_PID=$!
           cleanup() {
             if [[ -n "${LEGACY_PID:-}" ]]; then
@@ -110,7 +110,7 @@ jobs:
 
           PYTHONPATH=. PORT=5004 STATE_READ_BACKEND=legacy \
             STATE_READ_SHADOW_COMPARE=0 ARCHIVEDB_AUTH_TEST_MODE=1 \
-            .venv/bin/python .runtime/source/gallery_app.py > rollback-control.log 2>&1 &
+            .venv/bin/python arcdb/app.py > rollback-control.log 2>&1 &
           LEGACY_PID=$!
           wait_for_server 5004 "$LEGACY_PID" rollback-control.log
 
@@ -120,7 +120,7 @@ jobs:
 
           PYTHONPATH=. PORT=5005 STATE_READ_BACKEND=legacy \
             STATE_READ_SHADOW_COMPARE=0 ARCHIVEDB_AUTH_TEST_MODE=1 \
-            .venv/bin/python .runtime/source/gallery_app.py > rollback-server.log 2>&1 &
+            .venv/bin/python arcdb/app.py > rollback-server.log 2>&1 &
           CANDIDATE_PID=$!
           wait_for_server 5005 "$CANDIDATE_PID" rollback-server.log
 

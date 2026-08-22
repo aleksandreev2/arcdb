@@ -14,14 +14,14 @@ import venv
 import webbrowser
 from pathlib import Path
 
-from materialize_baseline import materialize
-
 ROOT = Path(__file__).resolve().parents[1]
 VENV_DIR = ROOT / ".venv"
 ENV_FILE = ROOT / ".env"
 ENV_TEMPLATE = ROOT / ".env.local.example"
 REQUIREMENTS = ROOT / "requirements.txt"
 STAMP = VENV_DIR / ".requirements.sha256"
+TRACKED_ENTRYPOINT = ROOT / "arcdb" / "app.py"
+TRACKED_TEMPLATES = ROOT / "arcdb" / "templates"
 
 
 def venv_python() -> Path:
@@ -341,11 +341,15 @@ def wait_for_server_and_open(url: str, proc: subprocess.Popen, env: dict[str, st
 
 
 def ensure_source() -> Path:
-    source = materialize(ROOT / ".runtime" / "source")
-    entrypoint = source / "gallery_app.py"
-    if not entrypoint.exists():
-        raise RuntimeError(f"Baseline entrypoint is missing: {entrypoint}")
-    return entrypoint
+    if not TRACKED_ENTRYPOINT.is_file():
+        raise RuntimeError(f"Tracked runtime entrypoint is missing: {TRACKED_ENTRYPOINT}")
+    required_templates = ("login.html", "gallery.html", "reader.html")
+    missing = [name for name in required_templates if not (TRACKED_TEMPLATES / name).is_file()]
+    if missing:
+        raise RuntimeError(
+            "Tracked runtime templates are missing: " + ", ".join(sorted(missing))
+        )
+    return TRACKED_ENTRYPOINT
 
 
 def run_server(py: Path, child_env: dict[str, str], entrypoint: Path) -> int:
