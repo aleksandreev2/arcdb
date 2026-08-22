@@ -140,6 +140,20 @@ data/
 
 The manifest records source paths, backup paths, file sizes, SHA-256 values, candidate/target information, row counts and SQLite verification results.
 
+## Operational backup after migration
+
+The migration snapshot and the recurring SQLite backup solve different problems.
+Keep both. After a SQLite database exists, use `scripts/create_sqlite_backup.py` to
+capture a consistent committed snapshot with SQLite's online backup API, including
+committed WAL pages. The published backup is a portable single database plus a
+sanitized SHA-256 manifest and has already passed integrity/FK/application checks and
+a temporary runtime restore.
+
+Use `scripts/verify_sqlite_backup.py` for an independent restore verification and
+`scripts/restore_sqlite_backup.py` to publish a verified copy at a new path. Neither
+command modifies legacy files or overwrites an active SQLite path. The complete
+operator sequence is documented in `docs/BACKUP_RESTORE.md`.
+
 ## Existing SQLite target behavior
 
 A previous SQLite database is never silently discarded.
@@ -336,8 +350,11 @@ Status: feature-flagged backends, legacy-serving runtime shadow observation and 
 - the audit fails on mismatch/error, malformed or unknown events, non-increasing process counters and incomplete six-domain coverage;
 - its overwrite-refusing report omits input paths, identities and payloads and keeps primary-read authorization false;
 - CI explicitly replaces an SQLite-read canary process with a legacy-only process on the same port and repeats real authenticated endpoint parity.
+- `scripts/collect_production_inventory.py` and `scripts/reconcile_production_inventory.py` provide the preceding explicit-path live inventory/source-reconciliation gate with private exact details and separate path-free reports.
 
 Production reconciliation, actual observation and primary-read promotion remain pending. Retain legacy files and rollback controls throughout. Shadow comparison is valid only with `STATE_READ_BACKEND=legacy`; enabling it alongside `sqlite` fails closed to prevent an ambiguous rollout configuration.
+
+Follow `docs/PRODUCTION_INVENTORY.md` before the readiness preflight. Repository inventory tests prove only that the tools are read-only, deterministic and report-safe; they do not supply production evidence.
 
 Example after production paths have been discovered and the verified shadow exists:
 

@@ -13,6 +13,9 @@ venv/
 
 # Local runtime data
 data/
+oracle-inventory*.txt
+production-inventory-*.json
+production-reconciliation-*.json
 .runtime/
 .dev-backups/
 

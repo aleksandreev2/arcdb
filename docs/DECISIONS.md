@@ -325,3 +325,49 @@ Decision:
 Reasoning:
 
 Manual grep checks prove neither a complete observation boundary nor monotonic per-process evidence, while an unstructured CI backend comparison does not demonstrate the operational rollback sequence. A strict bounded-log audit and same-port process replacement make both gates reproducible without expanding the trust assigned to fixture data or claiming unavailable production access.
+
+## ADR-021 — Separate private production inventory from sanitized reconciliation evidence
+
+Status: accepted for production preparation.
+
+Decision:
+
+- discover process/unit/config candidates read-only without guessed application or data roots;
+- require operator-confirmed explicit application, metadata, SQLite, content, systemd and Cloudflared paths for structured collection;
+- keep exact paths, service identities and relative filenames only in protected private artifacts;
+- emit separate path-free reports containing aggregate counts, sizes, hashes and non-authorizing decisions;
+- hash source/metadata without collecting payloads or environment/config secret values;
+- compare production source deterministically against the behavior-compatible materialized baseline, not against unrelated repository plumbing;
+- require operator review of every missing, changed, live-only source file and unknown metadata file before readiness preflight;
+- refuse report overwrite and never let inventory/reconciliation authorize canary or primary reads.
+
+Reasoning:
+
+The live OCI layout and source revision are unknown, while a public report must not expose production paths, user identities or payload. A private exact artifact is necessary for actionable reconciliation, but it must be separated from shareable evidence. Comparing hashes against `.runtime/source` proves code equivalence without deploying or reading user state and keeps absence of production access explicit.
+
+## ADR-022 — Use SQLite online backup and require a verified restore
+
+Status: accepted for repository-side migration readiness.
+
+Decision:
+
+- create operational SQLite backups through SQLite's online backup API so committed
+  WAL content is included in one consistent snapshot;
+- convert the backup artifact to a portable single-file database instead of shipping
+  an unmanaged live database/WAL/SHM set;
+- publish only a new backup directory after SHA-256, schema, quick/integrity/FK and
+  application-query checks pass;
+- require a temporary restore opened through the runtime SQLite adapter before the
+  backup is considered verified;
+- keep manifests free of absolute paths, payloads and identities;
+- restore only to a new target path and refuse existing targets or sidecars;
+- keep legacy migration snapshots and SQLite-to-legacy export tooling independently.
+
+Reasoning:
+
+Copying only a live SQLite main file can omit committed WAL pages, while merely
+hashing a copied file does not prove the application can restore it. The online
+backup API provides SQLite-consistent snapshot semantics. A required runtime restore
+test detects unusable artifacts before retention or cutover, and new-target-only
+publication prevents recovery tooling from becoming an accidental destructive
+database replacement mechanism.

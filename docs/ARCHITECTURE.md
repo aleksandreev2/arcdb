@@ -123,7 +123,7 @@ This is intentionally simple. OCI remains the heavy compute origin.
 
 ## 7. Storage ownership target
 
-Current transition status: Phase 2A–2D writes are complete for schema v3. Phase 3 provides `STATE_READ_BACKEND=legacy|sqlite` for users, user state, collections, uploads, custom metadata and allowlist. Phase 3B can additionally read SQLite alongside legacy-served requests and emit payload-free comparison events. An explicit-path read-only preflight produces a sanitized, non-authorizing health/parity/source-stability report for production reconciliation. Phase 3C validates one bounded process's event stream and CI rehearses replacement of an SQLite-read canary process with a legacy-only process on the same port. `legacy` remains the default; these local/CI controls do not substitute for live reconciliation, traffic observation or operator authorization.
+Current transition status: Phase 2A–2D writes are complete for schema v3. Phase 3 provides `STATE_READ_BACKEND=legacy|sqlite` for users, user state, collections, uploads, custom metadata and allowlist. Phase 3B can additionally read SQLite alongside legacy-served requests and emit payload-free comparison events. An explicit-path read-only preflight produces a sanitized, non-authorizing health/parity/source-stability report for production reconciliation. Phase 3C validates one bounded process's event stream and CI rehearses replacement of an SQLite-read canary process with a legacy-only process on the same port. WAL-aware operational backup creates a portable verified artifact through SQLite's online backup API and proves it with a temporary runtime restore; restoration publishes only a new path. `legacy` remains the default; these local/CI controls do not substitute for live reconciliation, traffic observation or operator authorization.
 
 ### SQLite WAL
 
@@ -296,7 +296,7 @@ Before deployment decisions that depend on them, collect:
 - existing backup/snapshot strategy.
 - real data sizes and request/job load.
 
-Use `scripts/oracle_inventory.sh` for a read-only first pass when the owner is willing to run it.
+Use the complete read-only procedure in `docs/PRODUCTION_INVENTORY.md`: `scripts/oracle_inventory.sh` discovers candidate paths without guessed roots, the structured collector fingerprints operator-confirmed paths without payloads, and the reconciliation tool compares live source with `.runtime/source`. These tools are implemented; no live result is available yet.
 
 ## 14. Architecture rules
 

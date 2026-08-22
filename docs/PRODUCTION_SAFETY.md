@@ -23,6 +23,8 @@ Before touching production state:
 6. ensure the migration user can create files in the target directories;
 7. do not run the migration during another state-format migration.
 
+Before these preconditions are treated as known facts, execute `docs/PRODUCTION_INVENTORY.md`. Keep raw/private discovery and reconciliation artifacts outside Git. The sanitized inventory/reconciliation reports deliberately omit paths, identities and payloads and cannot authorize a migration or read cutover.
+
 For the first production pass, prefer a brief maintenance/read-only window so source state cannot change between snapshot and cutover. If no maintenance window is possible, runtime dual-write and a more careful consistent-snapshot protocol are required.
 
 ## Recommended two-step production use
@@ -237,6 +239,29 @@ The exporter refuses to overwrite an existing output directory and reads the gen
 
 Never manually copy partial table contents in an emergency unless there is no safer option.
 
+## Operational SQLite backup and restore
+
+Migration snapshots protect the legacy source and a replaced target. Once SQLite
+exists, also create recurring application-level backups with:
+
+```bash
+python scripts/create_sqlite_backup.py \
+  --db /explicit/data/arcdb.sqlite3 \
+  --backup-dir /new/timestamped/backup
+```
+
+This uses SQLite's online backup API, so a consistent committed snapshot includes
+pages currently held in WAL. Do not copy a live `.sqlite3` file without coordinating
+its `-wal`/`-shm` state. The published artifact is a portable single file and is not
+considered valid until checksum, schema, quick/integrity/FK checks and a temporary
+runtime restore all pass.
+
+Independently recheck retained media with `scripts/verify_sqlite_backup.py`. Restore
+with `scripts/restore_sqlite_backup.py` only to a new path; it refuses any existing
+target or sidecar. Stop/quiesce writers before switching the application to that path,
+retain the old database and legacy files, and switch back on a failed smoke/parity
+check. The exact procedure is in `docs/BACKUP_RESTORE.md`.
+
 ## Prohibited migration behaviors
 
 Do not:
@@ -256,6 +281,7 @@ At minimum preserve:
 
 - the pre-cutover legacy snapshot;
 - the previous SQLite DB if replacing one;
+- at least one independently verified operational SQLite backup and restore-test result;
 - the migration manifest/checksums;
 - deployment commit/version information.
 

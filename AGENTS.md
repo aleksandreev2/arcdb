@@ -75,6 +75,8 @@ Completed:
 - Phase 3B legacy-serving SQLite shadow comparison with process-local counters, payload-free events and strict all-domain CI;
 - read-only cutover readiness preflight with full parity, SQLite health checks, recursive source-hash stability and a payload-free report that cannot authorize cutover by itself;
 - Phase 3C shadow-observation evidence validation plus a real Flask SQLite-canary -> legacy rollback rehearsal in CI.
+- read-only production discovery, structured private inventory, path-free reporting and deterministic source reconciliation tooling; live execution is still pending.
+- WAL-aware SQLite online backup, sanitized checksum manifest, independent runtime restore verification and new-target-only restore tooling.
 
 Still pending:
 
@@ -214,14 +216,15 @@ At minimum:
 - keep Runtime Dual Write CI green while Phase 2 is active;
 - for storage changes, add parity/round-trip/integrity tests;
 - for any migration, prove source files were not modified;
+- for SQLite backup changes, prove WAL content is captured, corruption is rejected and an independent runtime restore succeeds;
 - keep the explicit read-cutover preflight green and its report free of paths, identities and payloads;
 - keep the bounded shadow-observation audit and SQLite-canary -> legacy rollback rehearsal green;
 - update docs when architecture, storage ownership or rollout state changes.
 
 ## Next ordered work
 
-1. Obtain the live inventory/sanitized baseline and run the explicit read-only readiness preflight against discovered production paths.
-2. Review unknown-file counts and reconcile any live code/config differences.
+1. Run the two-stage procedure in `docs/PRODUCTION_INVENTORY.md` on the live host and reconcile its private inventory against the materialized repository baseline.
+2. Review every exact private source difference and unknown metadata file, then run the explicit read-only readiness preflight against discovered production paths.
 3. Enable legacy-serving shadow comparison for one bounded process, retain its private raw log and validate the payload-free events with `scripts/verify_read_shadow_observation.py`.
 4. Enable SQLite reads only for a bounded internal canary with immediate rollback to `legacy`.
 5. Make SQLite primary reads only after stable observation.
@@ -238,6 +241,8 @@ Start here, then read:
 - `docs/DATA_MODEL.md` — state/files and intended ownership.
 - `docs/STORAGE_MIGRATION.md` — SQLite migration phases.
 - `docs/PRODUCTION_SAFETY.md` — deployment/migration invariants and rollback.
+- `docs/BACKUP_RESTORE.md` — exact migration, operational backup, restore and retention procedure.
+- `docs/PRODUCTION_INVENTORY.md` — exact read-only live discovery/inventory/reconciliation procedure.
 - `docs/ROADMAP.md` — ordered implementation plan.
 - `docs/DECISIONS.md` — architectural decisions and rationale.
 

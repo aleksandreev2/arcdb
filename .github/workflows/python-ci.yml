@@ -33,6 +33,8 @@ jobs:
           arcdb/storage/read_observation.py
           arcdb/storage/readiness.py
           arcdb/storage/state_parity.py
+          arcdb/storage/sqlite_backup.py
+          arcdb/production_inventory.py
           scripts/dev_bootstrap.py
           scripts/dev_seed.py
           scripts/dev_seed_library.py
@@ -42,6 +44,11 @@ jobs:
           scripts/verify_state_parity.py
           scripts/verify_read_cutover_readiness.py
           scripts/verify_read_shadow_observation.py
+          scripts/create_sqlite_backup.py
+          scripts/verify_sqlite_backup.py
+          scripts/restore_sqlite_backup.py
+          scripts/collect_production_inventory.py
+          scripts/reconcile_production_inventory.py
           scripts/runtime_overlays.py
           scripts/materialize_baseline.py
           tests/make_seed_fixtures.py
@@ -51,10 +58,12 @@ jobs:
           tests/test_runtime_reads.py
           tests/test_read_observation.py
           tests/test_readiness.py
+          tests/test_sqlite_backup.py
           tests/test_runtime_users.py
           tests/test_runtime_metadata.py
           tests/test_runtime_overlays.py
           tests/test_dev_seed.py
+          tests/test_production_inventory.py
           tests/runtime_collection_workflow.py
           tests/runtime_metadata_workflow.py
           tests/runtime_auth_workflow.py
@@ -64,6 +73,8 @@ jobs:
           test -f .runtime/source/templates/login.html
           test -f .runtime/source/templates/gallery.html
           test -f .runtime/source/templates/reader.html
+      - name: Validate production discovery shell syntax
+        run: bash -n scripts/oracle_inventory.sh
 
   local-bootstrap-smoke:
     runs-on: ubuntu-latest
@@ -195,6 +206,8 @@ jobs:
           tests/test_runtime_reads.py
           tests/test_read_observation.py
           tests/test_readiness.py
+          tests/test_sqlite_backup.py
+          tests/test_production_inventory.py
           tests/test_runtime_users.py
           tests/test_runtime_metadata.py
           tests/test_runtime_overlays.py
@@ -252,3 +265,24 @@ jobs:
           test -f data/legacy-export-test/user_data.json
           test -f data/legacy-export-test/collections.json
           test -f data/legacy-export-test/manifest.json
+      - name: Create, independently verify and restore a WAL-aware SQLite backup
+        run: |
+          PYTHONPATH=. .venv/bin/python scripts/create_sqlite_backup.py \
+            --db data/arcdb.sqlite3 \
+            --backup-dir data/sqlite-backup-test
+          PYTHONPATH=. .venv/bin/python scripts/verify_sqlite_backup.py \
+            data/sqlite-backup-test
+          PYTHONPATH=. .venv/bin/python scripts/restore_sqlite_backup.py \
+            --backup-dir data/sqlite-backup-test \
+            --target-db data/sqlite-restore-test/arcdb.sqlite3
+          PYTHONPATH=. .venv/bin/python - <<'PY'
+          from pathlib import Path
+          from arcdb.storage.sqlite_backup import verify_sqlite_file
+
+          source = verify_sqlite_file(Path('data/arcdb.sqlite3'))
+          restored = verify_sqlite_file(Path('data/sqlite-restore-test/arcdb.sqlite3'))
+          assert restored['row_counts'] == source['row_counts'], (source, restored)
+          assert Path('data/metadata/users.json').is_file()
+          assert Path('data/metadata/user_data.json').is_file()
+          assert Path('data/metadata/collections.json').is_file()
+          PY
