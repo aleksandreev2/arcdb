@@ -67,6 +67,18 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from telethon import TelegramClient, connection
 from telethon.errors import AuthKeyUnregisteredError
 
+from arcdb.epub_io import (
+    EpubLimits,
+    EpubSafetyError,
+    copy_upload_limited,
+    copy_zip_entry_atomic,
+    extract_epub_safely,
+    iter_epub_text_entries,
+    normalize_archive_path,
+    package_epub_streaming,
+    validate_epub_archive,
+)
+
 # ====================================================================
 # 1. CONFIGURATION & ENVIRONMENT LOADING
 # ====================================================================
@@ -185,6 +197,42 @@ MAX_EPUB_FILES = _env_int("MAX_EPUB_FILES", 10_000)
 MAX_EPUB_UNCOMPRESSED_BYTES = _env_int(
     "MAX_EPUB_UNCOMPRESSED_BYTES",
     750 * 1024 * 1024,  # 750 MB after extraction
+)
+MAX_EPUB_ENTRY_BYTES = _env_int(
+    "MAX_EPUB_ENTRY_BYTES",
+    128 * 1024 * 1024,
+)
+MAX_EPUB_TEXT_ENTRY_BYTES = _env_int(
+    "MAX_EPUB_TEXT_ENTRY_BYTES",
+    8 * 1024 * 1024,
+)
+MAX_EPUB_COMPRESSION_RATIO = _env_int("MAX_EPUB_COMPRESSION_RATIO", 250)
+MAX_EPUB_PACKAGE_IMAGE_BYTES = _env_int(
+    "MAX_EPUB_PACKAGE_IMAGE_BYTES",
+    12 * 1024 * 1024,
+)
+MAX_EPUB_PACKAGE_SESSION_BYTES = _env_int(
+    "MAX_EPUB_PACKAGE_SESSION_BYTES",
+    256 * 1024 * 1024,
+)
+MAX_EPUB_PACKAGE_SESSION_FILES = _env_int(
+    "MAX_EPUB_PACKAGE_SESSION_FILES",
+    1_000,
+)
+MAX_EPUB_PACKAGE_SESSIONS_PER_USER = _env_int(
+    "MAX_EPUB_PACKAGE_SESSIONS_PER_USER",
+    3,
+)
+EPUB_PACKAGE_SESSION_TTL_SECONDS = _env_int(
+    "EPUB_PACKAGE_SESSION_TTL_SECONDS",
+    15 * 60,
+)
+EPUB_LIMITS = EpubLimits(
+    max_entries=MAX_EPUB_FILES,
+    max_entry_bytes=MAX_EPUB_ENTRY_BYTES,
+    max_total_uncompressed_bytes=MAX_EPUB_UNCOMPRESSED_BYTES,
+    max_compression_ratio=MAX_EPUB_COMPRESSION_RATIO,
+    max_text_entry_bytes=MAX_EPUB_TEXT_ENTRY_BYTES,
 )
 MAX_UPLOAD_TAGS = _env_int("MAX_UPLOAD_TAGS", 30)
 MAX_UPLOAD_TAG_LENGTH = _env_int("MAX_UPLOAD_TAG_LENGTH", 60)
@@ -711,100 +759,17 @@ def _safe_upload_filename(value, fallback):
     return name[:240] or fallback
 
 def _copy_upload_limited(storage, destination, max_bytes):
-    os.makedirs(os.path.dirname(destination) or ".", exist_ok=True)
-    total = 0
-    tmp_path = f"{destination}.tmp.{os.getpid()}.{threading.get_ident()}"
-    try:
-        with open(tmp_path, "wb") as out:
-            while True:
-                chunk = storage.stream.read(1024 * 1024)
-                if not chunk:
-                    break
-                total += len(chunk)
-                if total > max_bytes:
-                    raise ValueError(
-                        f"File exceeds the {max_bytes // (1024 * 1024)} MB limit."
-                    )
-                out.write(chunk)
-                out.flush()
-                os.fsync(out.fileno())
-        if total <= 0:
-            raise ValueError("The uploaded file is empty.")
-        os.replace(tmp_path, destination)
-        return total
-    except Exception:
-        try:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
-        except OSError:
-            pass
-        raise
+    return copy_upload_limited(storage.stream, destination, max_bytes)
+
+
+def _epub_limits():
+    return EPUB_LIMITS
 
 def _validate_epub_archive(epub_path):
-    if not zipfile.is_zipfile(epub_path):
-        raise ValueError("The selected EPUB is not a valid ZIP/EPUB archive.")
-    total_uncompressed = 0
-    file_count = 0
-    try:
-        with zipfile.ZipFile(epub_path, "r") as archive:
-            for info in archive.infolist():
-                raw_name = str(info.filename or "").replace("\\", "/")
-                if (
-                    not raw_name
-                    or "\x00" in raw_name
-                    or raw_name.startswith("/")
-                    or re.match(r"^[A-Za-z]:", raw_name)
-                ):
-                    raise ValueError("The EPUB contains an unsafe absolute file path.")
-                parts = [part for part in raw_name.split("/") if part not in ("", ".")]
-                if ".." in parts:
-                    raise ValueError("The EPUB contains an unsafe parent-directory path.")
-
-                unix_mode = (info.external_attr >> 16) & 0o170000
-                if unix_mode == 0o120000:
-                    raise ValueError("The EPUB contains a symbolic link, which is not allowed.")
-                if info.flag_bits & 0x1:
-                    raise ValueError("Password-protected EPUB files are not supported.")
-                if info.is_dir():
-                    continue
-                file_count += 1
-                total_uncompressed += max(0, int(info.file_size or 0))
-                if file_count > MAX_EPUB_FILES:
-                    raise ValueError(f"The EPUB contains more than {MAX_EPUB_FILES} files.")
-                if total_uncompressed > MAX_EPUB_UNCOMPRESSED_BYTES:
-                    raise ValueError("The EPUB is too large after decompression.")
-
-                compressed = max(1, int(info.compress_size or 0))
-                if info.file_size > (25 * 1024 * 1024):
-                    if (info.file_size / compressed) > 250:
-                        raise ValueError("The EPUB has an unsafe compression ratio.")
-    except zipfile.BadZipFile as exc:
-        raise ValueError("The EPUB archive is damaged or invalid.") from exc
+    return validate_epub_archive(epub_path, _epub_limits())
 
 def _extract_epub_safely(epub_path, destination):
-    _validate_epub_archive(epub_path)
-    os.makedirs(destination, exist_ok=True)
-    try:
-        with zipfile.ZipFile(epub_path, "r") as archive:
-            for info in archive.infolist():
-                raw_name = str(info.filename or "").replace("\\", "/")
-                parts = [part for part in raw_name.split("/") if part not in ("", ".")]
-                if not parts:
-                    continue
-                relative_name = "/".join(parts)
-                target = resolve_under(destination, relative_name)
-                if not target:
-                    raise ValueError("The EPUB contains an unsafe extraction path.")
-                if info.is_dir():
-                    os.makedirs(target, exist_ok=True)
-                    continue
-                os.makedirs(os.path.dirname(target), exist_ok=True)
-                with archive.open(info, "r") as source:
-                    with open(target, "wb") as output:
-                        shutil.copyfileobj(source, output, length=1024 * 1024)
-    except Exception:
-        shutil.rmtree(destination, ignore_errors=True)
-        raise
+    return extract_epub_safely(epub_path, destination, _epub_limits())
 
 def _save_uploaded_cover(storage, upload_id):
     if not storage or not storage.filename:
@@ -3175,20 +3140,28 @@ def _extract_asset_from_epubs(base_path, rel_path):
                 infos = z.infolist()
                 for zi in infos:
                     if zi.filename.split("/")[-1].lower() == target_filename:
-                        os.makedirs(asset_dir, exist_ok=True)
-                        with open(save_full_path, "wb") as out:
-                            out.write(z.read(zi.filename))
+                        copy_zip_entry_atomic(
+                            z,
+                            zi,
+                            save_full_path,
+                            MAX_EPUB_ENTRY_BYTES,
+                            MAX_EPUB_COMPRESSION_RATIO,
+                        )
                         return save_full_path
                 for zi in infos:
                     zip_name = zi.filename.split("/")[-1].lower()
                     if zip_name.startswith(target_stem + ".") and zip_name.endswith(ASSET_IMAGE_EXTENSIONS):
                         true_ext = zip_name.rsplit(".", 1)[-1]
                         true_full_path = os.path.join(asset_dir, f"{target_stem}.{true_ext}")
-                        os.makedirs(asset_dir, exist_ok=True)
-                        with open(true_full_path, "wb") as out:
-                            out.write(z.read(zi.filename))
+                        copy_zip_entry_atomic(
+                            z,
+                            zi,
+                            true_full_path,
+                            MAX_EPUB_ENTRY_BYTES,
+                            MAX_EPUB_COMPRESSION_RATIO,
+                        )
                         return true_full_path
-        except (zipfile.BadZipFile, OSError):
+        except (zipfile.BadZipFile, EpubSafetyError, OSError):
             continue
     return None
 
@@ -5213,6 +5186,86 @@ EPUB_PACKAGE_SESSIONS_DIR = _env_str(
     os.path.join(tempfile.gettempdir(), "epub_package_sessions"),
 )
 os.makedirs(EPUB_PACKAGE_SESSIONS_DIR, exist_ok=True)
+_EPUB_PACKAGE_SESSION_RE = re.compile(r"^[0-9a-f]{32}$")
+_EPUB_PACKAGE_LOCK = threading.Lock()
+_ALLOWED_PACKAGE_IMAGE_MIMES = {
+    **_ALLOWED_COVER_MIMES,
+    "image/bmp": ".bmp",
+}
+
+
+def _sniff_package_image_mime(data):
+    mime = _sniff_image_mime(data)
+    if mime:
+        return mime
+    if data.startswith(b"BM"):
+        return "image/bmp"
+    return ""
+
+
+def _epub_package_session_path(session_id):
+    if not _EPUB_PACKAGE_SESSION_RE.fullmatch(str(session_id or "")):
+        return ""
+    return os.path.join(EPUB_PACKAGE_SESSIONS_DIR, session_id)
+
+
+def _load_owned_epub_session(session_id):
+    sess_dir = _epub_package_session_path(session_id)
+    if not sess_dir or not os.path.isdir(sess_dir) or os.path.islink(sess_dir):
+        return "", None
+    meta = read_json_file(os.path.join(sess_dir, "meta.json"), None)
+    if not isinstance(meta, dict):
+        return "", None
+    owner = str(meta.get("owner_email") or "").strip().lower()
+    current_user = str(session.get("user_email") or "").strip().lower()
+    created_at = meta.get("created_at")
+    try:
+        expired = float(created_at) < time.time() - EPUB_PACKAGE_SESSION_TTL_SECONDS
+    except (TypeError, ValueError):
+        expired = True
+    if expired:
+        shutil.rmtree(sess_dir, ignore_errors=True)
+        return "", None
+    if not owner or owner != current_user:
+        return "", None
+    return sess_dir, meta
+
+
+def _epub_package_session_usage(sess_dir):
+    total_bytes = 0
+    file_count = 0
+    for root, dirs, files in os.walk(sess_dir, followlinks=False):
+        dirs[:] = [name for name in dirs if not os.path.islink(os.path.join(root, name))]
+        for filename in files:
+            path = os.path.join(root, filename)
+            if os.path.islink(path):
+                raise EpubSafetyError("The package session contains an unsafe link.")
+            total_bytes += os.path.getsize(path)
+            file_count += 1
+    return total_bytes, file_count
+
+
+def _active_epub_sessions_for_user(user_email):
+    count = 0
+    now = time.time()
+    try:
+        names = os.listdir(EPUB_PACKAGE_SESSIONS_DIR)
+    except OSError:
+        return 0
+    for name in names:
+        sess_dir = _epub_package_session_path(name)
+        if not sess_dir or not os.path.isdir(sess_dir) or os.path.islink(sess_dir):
+            continue
+        meta = read_json_file(os.path.join(sess_dir, "meta.json"), None)
+        if not isinstance(meta, dict):
+            continue
+        try:
+            active = float(meta.get("created_at")) >= now - EPUB_PACKAGE_SESSION_TTL_SECONDS
+        except (TypeError, ValueError):
+            active = False
+        if active and str(meta.get("owner_email") or "").strip().lower() == user_email:
+            count += 1
+    return count
 
 def _cleanup_old_epub_sessions():
     now = time.time()
@@ -5220,14 +5273,14 @@ def _cleanup_old_epub_sessions():
         if not os.path.exists(EPUB_PACKAGE_SESSIONS_DIR):
             return
         for item in os.listdir(EPUB_PACKAGE_SESSIONS_DIR):
-            item_path = os.path.join(EPUB_PACKAGE_SESSIONS_DIR, item)
-            # Remove anything older than 15 minutes
-            if os.path.getmtime(item_path) < now - 900:
-                if os.path.isdir(item_path):
+            item_path = _epub_package_session_path(item)
+            if not item_path:
+                continue
+            if os.path.getmtime(item_path) < now - EPUB_PACKAGE_SESSION_TTL_SECONDS:
+                if os.path.islink(item_path):
+                    os.remove(item_path)
+                elif os.path.isdir(item_path):
                     shutil.rmtree(item_path, ignore_errors=True)
-                else:
-                    try: os.remove(item_path)
-                    except OSError: pass
     except Exception:
         pass
 
@@ -5247,6 +5300,8 @@ def epub_package_init():
     nkey = novel_key(novel)
     if user_email not in ADMIN_EMAILS and not check_download_limit(user_email, nkey):
         return jsonify({"error": "Daily download limit reached. Resets at midnight."}), 429
+    if _active_epub_sessions_for_user(user_email) >= MAX_EPUB_PACKAGE_SESSIONS_PER_USER:
+        return jsonify({"error": "Too many active EPUB package sessions."}), 429
 
     local_path = None
     if not want_raw:
@@ -5280,28 +5335,46 @@ def epub_package_init():
     if not local_path or not os.path.isfile(local_path):
         return jsonify({"error": "Base EPUB not available locally on server"}), 404
 
+    try:
+        _validate_epub_archive(local_path)
+    except (EpubSafetyError, OSError) as exc:
+        return jsonify({"error": f"Base EPUB is invalid: {exc}"}), 400
+
     session_id = secrets.token_hex(16)
     sess_dir = os.path.join(EPUB_PACKAGE_SESSIONS_DIR, session_id)
-    os.makedirs(sess_dir, exist_ok=True)
-    os.makedirs(os.path.join(sess_dir, "images"), exist_ok=True)
-
-    base_copy = os.path.join(sess_dir, "base.epub")
-    shutil.copy2(local_path, base_copy)
-
-    remote_urls = set()
     try:
-        with zipfile.ZipFile(base_copy, 'r') as z:
-            for name in z.namelist():
-                if name.endswith(('.xhtml', '.html', '.htm')):
-                    c = z.read(name).decode('utf-8', errors='ignore')
-                    for src in re.findall(r'<img[^>]+src=[\"\'](https?://[^\s\"\'\<\>]+)[\"\']', c, re.I):
-                        remote_urls.add(src.strip().replace('&amp;', '&'))
-                    for src in re.findall(r'<image[^>]+(?:xlink:href|href)=[\"\'](https?://[^\s\"\'\<\>]+)[\"\']', c, re.I):
-                        remote_urls.add(src.strip().replace('&amp;', '&'))
-                    for src in re.findall(r'https?://[^\s\"\'\<\>]+\.(?:file|jpg|jpeg|png|webp|gif|bmp)\b[^\s\"\'\<\>]*|https?://images\.novelpia\.com/[^\s\"\'\<\>]+', c, re.I):
-                        remote_urls.add(src.strip().replace('&amp;', '&'))
+        os.makedirs(sess_dir, exist_ok=False)
+        os.makedirs(os.path.join(sess_dir, "images"), exist_ok=False)
+        base_copy = os.path.join(sess_dir, "base.epub")
+        with open(local_path, "rb") as source:
+            copy_upload_limited(source, base_copy, MAX_EPUB_PACKAGE_SESSION_BYTES)
+
+        remote_urls = set()
+        def add_remote_urls(pattern, content):
+            for match in re.finditer(pattern, content, re.I):
+                value = match.group(1).strip().replace("&amp;", "&")
+                remote_urls.add(value)
+                if len(remote_urls) > MAX_EPUB_PACKAGE_SESSION_FILES:
+                    raise EpubSafetyError(
+                        "The base EPUB references too many remote images."
+                    )
+
+        for _name, content in iter_epub_text_entries(base_copy, _epub_limits()):
+            add_remote_urls(
+                r'<img[^>]+src=[\"\'](https?://[^\s\"\'\<\>]+)[\"\']',
+                content,
+            )
+            add_remote_urls(
+                r'<image[^>]+(?:xlink:href|href)=[\"\'](https?://[^\s\"\'\<\>]+)[\"\']',
+                content,
+            )
+            add_remote_urls(
+                r'(https?://[^\s\"\'\<\>]+\.(?:file|jpg|jpeg|png|webp|gif|bmp)\b[^\s\"\'\<\>]*|https?://images\.novelpia\.com/[^\s\"\'\<\>]+)',
+                content,
+            )
     except Exception as e:
-        return jsonify({"error": f"Failed reading base EPUB: {e}"}), 500
+        shutil.rmtree(sess_dir, ignore_errors=True)
+        return jsonify({"error": f"Failed reading base EPUB: {e}"}), 400
 
     filename = (
         novel.get("raw_original_name") if want_raw else novel.get("translated_original_name")
@@ -5320,70 +5393,143 @@ def epub_package_init():
 
     meta = {
         "session_id": session_id,
+        "owner_email": user_email,
         "novel_ref": novel_ref,
         "struct_novel_dir": struct_novel_dir,
         "filename": filename,
         "created_at": time.time(),
         "total_urls": len(remote_urls),
-        "urls": list(remote_urls)
+        "urls": sorted(remote_urls)
     }
-    with open(os.path.join(sess_dir, "meta.json"), "w", encoding="utf-8") as f:
-        json.dump(meta, f)
+    write_json_atomic(os.path.join(sess_dir, "meta.json"), meta)
 
     return jsonify({
         "status": "ok",
         "session_id": session_id,
         "total_images": len(remote_urls),
-        "urls": list(remote_urls),
+        "urls": sorted(remote_urls),
         "filename": filename
     })
 
 @app.route("/api/epub_package/upload_batch/<session_id>", methods=["POST"])
 @login_required
 def epub_package_upload_batch(session_id):
-    sess_dir = os.path.join(EPUB_PACKAGE_SESSIONS_DIR, session_id)
-    if not os.path.isdir(sess_dir):
+    sess_dir, meta = _load_owned_epub_session(session_id)
+    if not sess_dir:
         return jsonify({"error": "Session expired or not found"}), 404
 
     images_dir = os.path.join(sess_dir, "images")
     url_map_file = os.path.join(sess_dir, "url_map.json")
-
-    url_map = {}
-    if os.path.isfile(url_map_file):
-        try:
-            with open(url_map_file, "r", encoding="utf-8") as f:
-                url_map = json.load(f)
-        except Exception:
-            pass
-
     batch_map_raw = request.form.get("url_mapping", "")
-    batch_map = json.loads(batch_map_raw) if batch_map_raw else {}
+    try:
+        batch_map = json.loads(batch_map_raw) if batch_map_raw else {}
+    except json.JSONDecodeError:
+        return jsonify({"error": "url_mapping must be valid JSON."}), 400
+    if not isinstance(batch_map, dict):
+        return jsonify({"error": "url_mapping must be a JSON object."}), 400
 
-    uploaded_count = 0
-    for field_name, file_storage in request.files.items():
-        orig_url = batch_map.get(field_name) or request.form.get(f"url_{field_name}")
-        if orig_url and file_storage:
-            ext = os.path.splitext(file_storage.filename)[1] or ".webp"
-            if not ext.startswith("."): ext = "." + ext
+    allowed_urls = {
+        str(value)
+        for value in (meta.get("urls") or [])
+        if isinstance(value, str)
+    }
+    created_paths = []
+    obsolete_paths = []
+    incoming_path = ""
+    try:
+        with _EPUB_PACKAGE_LOCK:
+            url_map = read_json_file(url_map_file, {})
+            if not isinstance(url_map, dict):
+                raise EpubSafetyError("The package session mapping is invalid.")
+            session_bytes, _ = _epub_package_session_usage(sess_dir)
+            next_index = 1
+            for filename in os.listdir(images_dir):
+                match = re.fullmatch(r"img_(\d{4,})\.[a-z0-9]+", filename, re.I)
+                if match:
+                    next_index = max(next_index, int(match.group(1)) + 1)
 
-            file_idx = len(url_map) + 1
-            safe_fname = f"img_{file_idx:04d}{ext}"
-            save_path = os.path.join(images_dir, safe_fname)
-            file_storage.save(save_path)
+            uploaded_count = 0
+            for field_name, file_storage in request.files.items():
+                orig_url = batch_map.get(field_name) or request.form.get(f"url_{field_name}")
+                orig_url = str(orig_url or "").strip()
+                parsed_url = urlsplit(orig_url)
+                if (
+                    not orig_url
+                    or orig_url not in allowed_urls
+                    or parsed_url.scheme not in ("http", "https")
+                    or not parsed_url.netloc
+                ):
+                    raise EpubSafetyError("An uploaded image URL is not part of this session.")
+                if (
+                    orig_url not in url_map
+                    and len(url_map) >= MAX_EPUB_PACKAGE_SESSION_FILES
+                ):
+                    raise EpubSafetyError("The package session contains too many images.")
 
-            url_map[orig_url] = safe_fname
-            uploaded_count += 1
+                incoming_path = os.path.join(images_dir, f".incoming.{uuid.uuid4().hex}")
+                image_size = _copy_upload_limited(
+                    file_storage,
+                    incoming_path,
+                    MAX_EPUB_PACKAGE_IMAGE_BYTES,
+                )
+                with open(incoming_path, "rb") as image_file:
+                    mime = _sniff_package_image_mime(image_file.read(512))
+                extension = _ALLOWED_PACKAGE_IMAGE_MIMES.get(mime)
+                if not extension:
+                    raise EpubSafetyError(
+                        "Packaged images must be JPEG, PNG, GIF, WebP, or BMP files."
+                    )
+                old_filename = url_map.get(orig_url)
+                old_path = resolve_under(images_dir, old_filename) if old_filename else ""
+                old_size = (
+                    os.path.getsize(old_path)
+                    if old_path and os.path.isfile(old_path) and not os.path.islink(old_path)
+                    else 0
+                )
+                if session_bytes - old_size + image_size > MAX_EPUB_PACKAGE_SESSION_BYTES:
+                    raise EpubSafetyError("The package session exceeds its storage limit.")
 
-    with open(url_map_file, "w", encoding="utf-8") as f:
-        json.dump(url_map, f)
+                safe_filename = f"img_{next_index:04d}{extension}"
+                next_index += 1
+                save_path = os.path.join(images_dir, safe_filename)
+                os.replace(incoming_path, save_path)
+                incoming_path = ""
+                created_paths.append(save_path)
+                session_bytes = session_bytes - old_size + image_size
+
+                if old_filename and old_filename != safe_filename:
+                    if old_path and os.path.isfile(old_path):
+                        obsolete_paths.append(old_path)
+                url_map[orig_url] = safe_filename
+                uploaded_count += 1
+
+            write_json_atomic(url_map_file, url_map)
+            for old_path in obsolete_paths:
+                try:
+                    os.remove(old_path)
+                except OSError:
+                    pass
+    except (EpubSafetyError, OSError) as exc:
+        if incoming_path:
+            try:
+                os.remove(incoming_path)
+            except OSError:
+                pass
+        for created_path in created_paths:
+            try:
+                os.remove(created_path)
+            except OSError:
+                pass
+        status = 413 if "limit" in str(exc).lower() or "too many" in str(exc).lower() else 400
+        return jsonify({"error": str(exc)}), status
 
     return jsonify({"status": "ok", "saved_in_batch": uploaded_count, "total_saved": len(url_map)})
 
 @app.route("/api/epub_package/finalize/<session_id>", methods=["POST"])
 @login_required
 def epub_package_finalize(session_id):
-    sess_dir = os.path.join(EPUB_PACKAGE_SESSIONS_DIR, session_id)
-    if not os.path.isdir(sess_dir):
+    sess_dir, meta = _load_owned_epub_session(session_id)
+    if not sess_dir:
         return jsonify({"error": "Session not found"}), 404
 
     base_epub = os.path.join(sess_dir, "base.epub")
@@ -5391,22 +5537,9 @@ def epub_package_finalize(session_id):
     images_dir = os.path.join(sess_dir, "images")
     url_map_file = os.path.join(sess_dir, "url_map.json")
 
-    url_map = {}
-    if os.path.isfile(url_map_file):
-        try:
-            with open(url_map_file, "r", encoding="utf-8") as f:
-                url_map = json.load(f)
-        except Exception:
-            pass
-
-    meta = {}
-    meta_file = os.path.join(sess_dir, "meta.json")
-    if os.path.isfile(meta_file):
-        try:
-            with open(meta_file, "r", encoding="utf-8") as f:
-                meta = json.load(f)
-        except Exception:
-            pass
+    url_map = read_json_file(url_map_file, {})
+    if not isinstance(url_map, dict):
+        return jsonify({"error": "Package session mapping is invalid."}), 400
 
     struct_novel_dir = meta.get("struct_novel_dir")
     if not struct_novel_dir and meta.get("novel_ref"):
@@ -5423,125 +5556,77 @@ def epub_package_finalize(session_id):
                     break
 
     try:
-        with zipfile.ZipFile(base_epub, 'r') as z_in:
-            all_entries = {n: z_in.read(n) for n in z_in.namelist()}
+        with _EPUB_PACKAGE_LOCK:
+            summary = _validate_epub_archive(base_epub)
+            opf_dir = summary.opf_path.rsplit("/", 1)[0] if "/" in summary.opf_path else ""
+            in_epub_images_dir = f"{opf_dir}/Images" if opf_dir else "Images"
+            injected_files = {}
 
-        opf_path = next((n for n in all_entries if n.lower().endswith('.opf')), 'OEBPS/content.opf')
-        opf_dir = os.path.dirname(opf_path)
-        in_epub_images_dir = f"{opf_dir}/Images" if opf_dir else "OEBPS/Images"
+            if struct_novel_dir and os.path.isdir(struct_novel_dir):
+                for folder_name in ("images", "Images"):
+                    local_img_dir = os.path.join(struct_novel_dir, folder_name)
+                    if not os.path.isdir(local_img_dir) or os.path.islink(local_img_dir):
+                        continue
+                    for image_filename in sorted(os.listdir(local_img_dir)):
+                        if not image_filename.casefold().endswith(
+                            (".webp", ".jpg", ".jpeg", ".png", ".gif", ".svg", ".bmp")
+                        ):
+                            continue
+                        image_path = os.path.join(local_img_dir, image_filename)
+                        if os.path.islink(image_path) or not os.path.isfile(image_path):
+                            continue
+                        target, _ = normalize_archive_path(
+                            f"{in_epub_images_dir}/{image_filename}"
+                        )
+                        injected_files[target] = image_path
 
-        manifest_additions = []
+            safe_url_map = {}
+            for original_url, safe_filename in url_map.items():
+                original_url = str(original_url or "").strip()
+                safe_filename = str(safe_filename or "").strip()
+                if not re.fullmatch(r"img_\d{4,}\.(?:jpg|png|gif|webp|bmp)", safe_filename, re.I):
+                    raise EpubSafetyError("The package session contains an unsafe image name.")
+                image_path = resolve_under(images_dir, safe_filename)
+                if not image_path or os.path.islink(image_path) or not os.path.isfile(image_path):
+                    raise EpubSafetyError("A package session image is missing or unsafe.")
+                target, _ = normalize_archive_path(
+                    f"{in_epub_images_dir}/{safe_filename}"
+                )
+                injected_files[target] = image_path
+                safe_url_map[original_url] = safe_filename
 
-        # 1. Bundle all local images from structured_output/<novel_id>/images/ (if any)
-        if struct_novel_dir and os.path.isdir(struct_novel_dir):
-            for folder_name in ["images", "Images"]:
-                local_img_dir = os.path.join(struct_novel_dir, folder_name)
-                if os.path.isdir(local_img_dir):
-                    for img_fname in sorted(os.listdir(local_img_dir)):
-                        if img_fname.lower().endswith(('.webp', '.jpg', '.jpeg', '.png', '.gif', '.svg', '.bmp')):
-                            img_full = os.path.join(local_img_dir, img_fname)
-                            if os.path.isfile(img_full):
-                                try:
-                                    with open(img_full, 'rb') as fh:
-                                        img_bytes = fh.read()
-                                    zip_img_path = f"{in_epub_images_dir}/{img_fname}"
-                                    all_entries[zip_img_path] = img_bytes
-
-                                    ext = os.path.splitext(img_fname)[1].lower()
-                                    mime = "image/webp" if ext == ".webp" else ("image/png" if ext == ".png" else ("image/gif" if ext == ".gif" else "image/jpeg"))
-                                    rel_to_opf = os.path.relpath(zip_img_path, opf_dir).replace("\\", "/") if opf_dir else zip_img_path
-                                    clean_name = re.sub(r'[^a-zA-Z0-9_]', '_', os.path.splitext(img_fname)[0])
-                                    img_id = f"local_img_{clean_name}"
-                                    manifest_additions.append(f'    <item id="{img_id}" href="{rel_to_opf}" media-type="{mime}"/>')
-                                except Exception:
-                                    pass
-
-        # 2. Bundle all remote client-uploaded images from url_map
-        for orig_url, safe_fname in url_map.items():
-            disk_img_path = os.path.join(images_dir, safe_fname)
-            if os.path.isfile(disk_img_path):
-                with open(disk_img_path, 'rb') as fh:
-                    img_bytes = fh.read()
-                zip_img_path = f"{in_epub_images_dir}/{safe_fname}"
-                all_entries[zip_img_path] = img_bytes
-
-                ext = os.path.splitext(safe_fname)[1].lower()
-                mime = "image/webp" if ext == ".webp" else ("image/png" if ext == ".png" else ("image/gif" if ext == ".gif" else "image/jpeg"))
-                rel_to_opf = os.path.relpath(zip_img_path, opf_dir).replace("\\", "/") if opf_dir else zip_img_path
-                img_id = f"injected_{os.path.splitext(safe_fname)[0]}"
-                manifest_additions.append(f'    <item id="{img_id}" href="{rel_to_opf}" media-type="{mime}"/>')
-
-        # 3. Rewrite chapter HTML references
-        for name, content_bytes in list(all_entries.items()):
-            if name.endswith(('.xhtml', '.html', '.htm')):
-                try:
-                    text = content_bytes.decode('utf-8', errors='ignore')
-                    changed = False
-                    for orig_url, safe_fname in url_map.items():
-                        if orig_url in text:
-                            zip_img_path = f"{in_epub_images_dir}/{safe_fname}"
-                            chap_dir = os.path.dirname(name)
-                            rel_from_chap = os.path.relpath(zip_img_path, chap_dir).replace("\\", "/")
-                            text = text.replace(orig_url, rel_from_chap)
-                            changed = True
-                    if changed:
-                        all_entries[name] = text.encode('utf-8')
-                except Exception:
-                    pass
-
-        # 4. Inject non-duplicate entries into content.opf manifest
-        if opf_path in all_entries and manifest_additions:
-            try:
-                opf_text = all_entries[opf_path].decode('utf-8', errors='ignore')
-                existing_hrefs = set(re.findall(r'href=[\"\']([^\"\']+)[\"\']', opf_text))
-                filtered_additions = []
-                for entry_str in manifest_additions:
-                    href_match = re.search(r'href=[\"\']([^\"\']+)[\"\']', entry_str)
-                    if href_match:
-                        href_val = href_match.group(1)
-                        if href_val not in existing_hrefs:
-                            filtered_additions.append(entry_str)
-                            existing_hrefs.add(href_val)
-                    else:
-                        filtered_additions.append(entry_str)
-
-                m_end = opf_text.find('</manifest>')
-                if m_end != -1 and filtered_additions:
-                    new_manifest_str = '\n'.join(filtered_additions) + '\n  '
-                    opf_text = opf_text[:m_end] + new_manifest_str + opf_text[m_end:]
-                    all_entries[opf_path] = opf_text.encode('utf-8')
-            except Exception:
-                pass
-
-        with zipfile.ZipFile(final_epub, 'w', zipfile.ZIP_DEFLATED) as z_out:
-            if 'mimetype' in all_entries:
-                z_out.writestr('mimetype', all_entries['mimetype'], compress_type=zipfile.ZIP_STORED)
-            for n, d in all_entries.items():
-                if n != 'mimetype':
-                    z_out.writestr(n, d, compress_type=zipfile.ZIP_DEFLATED)
-
+            session_bytes, _ = _epub_package_session_usage(sess_dir)
+            if os.path.isfile(final_epub):
+                session_bytes -= os.path.getsize(final_epub)
+            remaining_bytes = MAX_EPUB_PACKAGE_SESSION_BYTES - session_bytes
+            if remaining_bytes <= 0:
+                raise EpubSafetyError("The package session exceeds its storage limit.")
+            package_epub_streaming(
+                base_epub,
+                final_epub,
+                injected_files=injected_files,
+                url_map=safe_url_map,
+                limits=_epub_limits(),
+                max_output_bytes=remaining_bytes,
+            )
         return jsonify({"status": "ok", "download_url": f"/api/epub_package/download/{session_id}"})
+    except EpubSafetyError as exc:
+        return jsonify({"error": f"Packaging failed: {exc}"}), 400
     except Exception as e:
         return jsonify({"error": f"Packaging failed: {e}"}), 500
 
 @app.route("/api/epub_package/download/<session_id>")
 @login_required
 def epub_package_download_file(session_id):
-    sess_dir = os.path.join(EPUB_PACKAGE_SESSIONS_DIR, session_id)
+    sess_dir, meta = _load_owned_epub_session(session_id)
+    if not sess_dir:
+        return "Download expired or file not ready.", 404
     final_epub = os.path.join(sess_dir, "final.epub")
-    meta_file = os.path.join(sess_dir, "meta.json")
 
     if not os.path.isfile(final_epub):
         return "Download expired or file not ready.", 404
 
-    filename = "novel.epub"
-    if os.path.isfile(meta_file):
-        try:
-            with open(meta_file, "r", encoding="utf-8") as f:
-                meta = json.load(f)
-                filename = meta.get("filename", "novel.epub")
-        except Exception:
-            pass
+    filename = meta.get("filename", "novel.epub")
 
     user_email = session.get("user_email", "")
     nkey = meta.get("novel_ref", "")
@@ -5556,7 +5641,7 @@ def epub_package_download_file(session_id):
         return response
 
     return send_file(
-        final_epub,
+        os.path.abspath(final_epub),
         mimetype="application/epub+zip",
         as_attachment=True,
         download_name=_safe_upload_filename(filename, "novel.epub"),

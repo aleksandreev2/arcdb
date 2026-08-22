@@ -84,9 +84,13 @@ Mutable state such as reading progress can require reading, mutating and rewriti
 
 EPUB/ZIP/image processing can occur synchronously inside HTTP requests. Large operations therefore risk origin/edge timeouts and tie up web capacity.
 
-### Large in-memory EPUB handling
+### Bounded EPUB handling
 
-Some packaging paths can materialize a large fraction of an EPUB into Python objects at once. This should be converted to streaming entry-by-entry processing.
+Repository/local/CI upload, extraction, reader asset recovery and package-finalization
+paths now enforce archive entry/count/expanded-size/compression/path/link/duplicate
+limits. Non-text entries are copied in bounded chunks and package publication is
+atomic. Packaging is still synchronous and must move to the persistent worker in the
+next phase.
 
 ## 6. Near-term target architecture
 
@@ -272,17 +276,15 @@ Review/add:
 
 Ordered roughly by value/risk:
 
-1. remove repeated `fsync` per upload chunk;
-2. stream EPUB/ZIP work instead of reading complete archives into RAM;
-3. move long packaging out of HTTP requests;
-4. replace hot JSON whole-file state with SQLite WAL;
-5. replace repeated linear novel lookup with indexed lookup;
-6. build persistent library/chapter index;
-7. split Telethon from web process;
-8. then tune Gunicorn workers/threads using measured workload;
-9. split/cache frontend static assets;
-10. introduce R2 selectively;
-11. reduce background community polling / use visibility/backoff and later push mechanisms.
+1. move long packaging out of HTTP requests (upload/EPUB I/O itself is now bounded and streamed);
+2. replace hot JSON whole-file state with SQLite WAL;
+3. replace repeated linear novel lookup with indexed lookup;
+4. build persistent library/chapter index;
+5. split Telethon from web process;
+6. then tune Gunicorn workers/threads using measured workload;
+7. split/cache frontend static assets;
+8. introduce R2 selectively;
+9. reduce background community polling / use visibility/backoff and later push mechanisms.
 
 ## 13. Production details still unknown
 

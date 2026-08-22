@@ -172,12 +172,21 @@ Benefits:
 
 ## Phase 5 — immediate I/O fixes
 
-Can partly run in parallel once storage work is stable.
+Status: completed in repository/local/CI runtime.
 
-- upload sequential chunks, one flush/fsync at end rather than each 1 MB chunk;
-- stream ZIP/EPUB entries instead of loading entire archive into RAM;
-- enforce total upload/session limits consistently;
-- add robust MIME/file validation where appropriate.
+- upload sequential chunks with one flush/fsync before atomic publication;
+- stream ZIP/EPUB entries instead of loading the complete archive into RAM;
+- enforce request, entry, expanded archive, compression-ratio, package image,
+  package-session byte/file/count and expiry limits;
+- reject traversal, absolute/reserved paths, symlinks/special files, encryption,
+  duplicate/case/Unicode collisions, malformed structure/XML and CRC corruption;
+- validate uploaded package images by signature and bind package sessions to the
+  authenticated creator;
+- atomically publish extracted directories and final EPUBs, cleaning partial files;
+- retain existing upload/package API response contracts.
+
+The package finalize endpoint is intentionally still synchronous in this phase.
+Phase 6 moves the same bounded implementation behind persistent jobs.
 
 ## Phase 6 — async packaging jobs
 
@@ -241,7 +250,7 @@ Some items can occur earlier when touching related code:
 
 - systematic CSRF/same-origin protection;
 - allowlist HTML sanitizer for EPUB content;
-- upload ownership/session limits;
+- systematic ownership review for non-package upload/session endpoints (EPUB package ownership/limits are complete in Phase 5);
 - tighter CSP;
 - origin network restrictions;
 - admin auditability;
@@ -265,12 +274,14 @@ After process-local state is removed/split:
 3. bounded SQLite read canary
 4. SQLite primary reads
 5. stop legacy writes domain-by-domain
-6. immediate upload/EPUB I/O fixes
-7. async packager
-8. Telethon split
-9. persistent library index/frontend split
-10. R2/Cloudflare optimization
+6. async packager
+7. Telethon split
+8. persistent library index/frontend split
+9. R2/Cloudflare optimization
 ```
+
+Without live-production inputs, Phase 6 is the next independent repository-side
+stage; production read-cutover steps remain operator-gated rather than guessed.
 
 ## Explicit non-goals for now
 

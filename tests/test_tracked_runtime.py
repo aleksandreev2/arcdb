@@ -104,6 +104,16 @@ class TrackedRuntimeSourceTests(unittest.TestCase):
         self.assertIn("STATE_DUAL_WRITE_STRICT", text)
         self.assertNotIn("save_user_data(all_udata)", text)
 
+    def test_runtime_uses_bounded_epub_io_paths(self) -> None:
+        text = TRACKED_APP.read_text(encoding="utf-8")
+        self.assertIn("copy_upload_limited(storage.stream", text)
+        self.assertIn("package_epub_streaming(", text)
+        self.assertIn("_load_owned_epub_session(session_id)", text)
+        self.assertIn("copy_zip_entry_atomic(", text)
+        self.assertNotIn("all_entries =", text)
+        self.assertNotIn("file_storage.save(", text)
+        self.assertNotIn("out.write(z.read(", text)
+
 
 if __name__ == "__main__":
     unittest.main()

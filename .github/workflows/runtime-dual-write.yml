@@ -29,6 +29,7 @@ jobs:
           tests/test_runtime_state.py
           tests/test_runtime_users.py
           tests/test_runtime_metadata.py
+          tests/test_epub_io.py
           tests/test_tracked_runtime.py
           tests/test_dev_seed.py
 
@@ -86,6 +87,7 @@ jobs:
 
           PYTHONPATH=. .venv/bin/python tests/runtime_collection_workflow.py
           PYTHONPATH=. .venv/bin/python tests/runtime_metadata_workflow.py
+          PYTHONPATH=. .venv/bin/python tests/runtime_epub_workflow.py
           PYTHONPATH=. .venv/bin/python tests/runtime_auth_workflow.py
           PYTHONPATH=. .venv/bin/python scripts/verify_state_parity.py
 

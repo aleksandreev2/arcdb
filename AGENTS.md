@@ -78,6 +78,7 @@ Completed:
 - read-only production discovery, structured private inventory, path-free reporting and deterministic source reconciliation tooling; live execution is still pending.
 - WAL-aware SQLite online backup, sanitized checksum manifest, independent runtime restore verification and new-target-only restore tooling.
 - behavior-compatible Flask runtime and templates tracked directly under `arcdb/`; local startup and runtime CI no longer materialize `.b64` baseline parts or apply overlays.
+- bounded upload/EPUB I/O: one upload fsync before atomic publish, structure/CRC/path/bomb validation, atomic extraction, owner/size/count-limited package sessions and entry-streamed finalization.
 
 Still pending:
 
@@ -216,6 +217,7 @@ At minimum:
 - for storage changes, add parity/round-trip/integrity tests;
 - for any migration, prove source files were not modified;
 - for SQLite backup changes, prove WAL content is captured, corruption is rejected and an independent runtime restore succeeds;
+- for upload/EPUB changes, cover normal and malformed EPUBs, traversal, links, duplicate/colliding paths, entry/count/expanded-size/compression limits, Unicode paths, partial cleanup and real authenticated packaging;
 - keep the explicit read-cutover preflight green and its report free of paths, identities and payloads;
 - keep the bounded shadow-observation audit and SQLite-canary -> legacy rollback rehearsal green;
 - update docs when architecture, storage ownership or rollout state changes.

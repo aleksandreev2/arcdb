@@ -19,6 +19,7 @@ Read these before architecture/storage changes:
 8. `docs/PRODUCTION_INVENTORY.md` — live discovery/inventory/reconciliation procedure.
 9. `docs/ROADMAP.md` — ordered implementation plan.
 10. `docs/DECISIONS.md` — architectural decisions and rationale.
+11. `docs/PERFORMANCE_BASELINE.md` — reproducible before/after measurements.
 
 Material architectural changes should update the relevant docs in the same PR.
 
@@ -213,6 +214,30 @@ PYTHONPATH=. python3 scripts/reconcile_production_inventory.py \
 ```
 
 Private artifacts retain the exact paths and relative filenames needed by the operator. Separate sanitized reports contain aggregate counts/hashes and no paths, user identities, payloads or secret values. All reports leave readiness, canary and primary-read authorization false. See `docs/PRODUCTION_INVENTORY.md` for systemd, Gunicorn, Cloudflared, mount and unknown-file handling.
+
+## Upload and EPUB safety
+
+User uploads are streamed to a sibling temporary file, flushed/fsynced once and
+atomically published. EPUB validation reads the complete archive with bounded memory
+and rejects malformed structure/CRC, unsafe or colliding paths, links/special files,
+encryption, oversized entries, excessive expanded size/count and unsafe compression
+ratios. Extraction and final EPUB publication are atomic.
+
+Client-assisted package sessions are bound to the authenticated creator, expire,
+limit active sessions/files/bytes and accept only signature-validated raster images
+for URLs discovered in that session's base EPUB. Finalization retains the existing
+API contract but streams non-text ZIP entries; it remains synchronous until the
+persistent-jobs phase.
+
+All limits are explicit in `.env.example` and `.env.local.example`. Reproduce the
+whole-archive versus streaming memory/time comparison with:
+
+```text
+PYTHONPATH=. python scripts/benchmark_epub_io.py --payload-mib 16 --repetitions 5
+```
+
+See `docs/PERFORMANCE_BASELINE.md` for the recorded p50/p95/p99 result and its local,
+non-production scope.
 
 ## Local data
 
