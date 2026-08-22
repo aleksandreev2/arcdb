@@ -104,17 +104,25 @@ and the nonce and no longer contains `unsafe-inline` or a CDN. `script-src-attr
 'none'` blocks HTML event-handler attributes. Existing image error/tag actions were
 moved to `addEventListener`, and the unused missing-JSZip/CDN fallback was removed.
 
-The shared CSS for all five auth pages is now a fingerprinted local static asset.
-Requests carrying its content-hash version receive a one-year immutable cache
-header. Large gallery/reader/community CSS remains inline under `style-src
-'unsafe-inline'`; extracting it without a redesign and removing that final style
-exception belongs to the later static-frontend phase, not this executable-script
-security boundary.
+CSS for the five auth pages, gallery, reader, community and generated admin access
+page is served from local content-hash-versioned assets. The URL version is computed
+from the bytes the running process will actually serve, so Windows and Linux line
+endings cannot produce a stale hard-coded fingerprint. Only a version prefix that
+matches the served file's SHA-256 receives the one-year immutable cache header;
+unversioned and forged-version requests do not. Tracked runtime HTML has no style
+blocks or style attributes, and dynamic visibility/progress presentation uses
+classes, `hidden`, semantic `progress` elements and bounded browser animation APIs.
+Reader-controlled numeric preferences remain trusted local CSSOM custom properties.
+The response policy is now `style-src 'self'; style-src-attr 'none'` and contains no
+style `unsafe-inline` exception.
 
 Structural tests require a nonce on every tracked script tag, reject inline event
-attributes/CDN fallback, verify the CSS fingerprint and ensure the policy contains
-`script-src-attr 'none'`. Runtime smoke verifies the rendered nonce/header match and
-immutable fingerprinted asset response.
+attributes/CDN fallback, reject tracked inline style sinks, verify every CSS
+fingerprint and ensure the policy blocks script and style attributes. Runtime smoke
+verifies the rendered nonce/header match, self-only style policy, all five static
+asset bodies and both valid and forged fingerprint cache behavior. Local browser
+regression covers gallery, reader, community and admin rendering; production header
+observation remains inventory-gated.
 
 ## Remaining Phase 11 work
 

@@ -41,7 +41,7 @@ import uuid
 import zipfile
 from datetime import date, datetime, timedelta, timezone
 from email.message import EmailMessage
-from functools import wraps
+from functools import lru_cache, wraps
 from html import escape
 from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
@@ -524,7 +524,8 @@ def _content_security_policy():
         "default-src 'self'; "
         f"script-src 'self' 'nonce-{nonce}'; "
         "script-src-attr 'none'; "
-        "style-src 'self' 'unsafe-inline'; "
+        "style-src 'self'; "
+        "style-src-attr 'none'; "
         "img-src * data: blob:; "
         "font-src 'self' data:; "
         "connect-src 'self' https://*.novelpia.com https://images.novelpia.com; "
@@ -537,6 +538,25 @@ def _content_security_policy():
         "form-action 'self'"
     )
 
+@lru_cache(maxsize=64)
+def _static_asset_sha256(static_path):
+    digest = hashlib.sha256()
+    with open(static_path, "rb") as asset_file:
+        for chunk in iter(lambda: asset_file.read(64 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+def static_asset_url(relative_path):
+    """Build a versioned URL from the bytes this process will actually serve."""
+    normalized_path = str(relative_path).replace("/", os.sep)
+    static_path = confined_child(app.static_folder, normalized_path)
+    if not static_path or not os.path.isfile(static_path):
+        raise RuntimeError(f"Required static asset is missing: {relative_path}")
+    version = _static_asset_sha256(static_path)[:16]
+    return url_for("static", filename=relative_path, v=version)
+
+app.jinja_env.globals["static_asset_url"] = static_asset_url
+
 @app.after_request
 def set_security_headers(response):
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
@@ -547,7 +567,12 @@ def set_security_headers(response):
     if request.path.startswith("/static/") and re.fullmatch(
         r"[0-9a-f]{16,64}", asset_version
     ):
-        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        relative_path = unquote(request.path[len("/static/"):]).replace("/", os.sep)
+        static_path = confined_child(app.static_folder, relative_path)
+        if static_path and os.path.isfile(static_path):
+            actual_version = _static_asset_sha256(static_path)
+            if actual_version.startswith(asset_version):
+                response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
     return response
 
 # ====================================================================
@@ -4496,26 +4521,26 @@ def admin_access():
         tags_str = ", ".join(item.get("tags") or [])
         cover_path = item.get("cover_file_path")
         cover_url = f"/api/upload/{quote(str(uid), safe='')}/asset/cover" if cover_path and os.path.isfile(cover_path) else ""
-        cover_html = f'<img src="{cover_url}" style="width:70px; height:105px; object-fit:cover; border-radius:6px; margin-right:14px; flex-shrink:0;">' if cover_url else ''
+        cover_html = f'<img src="{cover_url}" class="pending-cover" alt="">' if cover_url else ''
 
         pending_cards.append(f"""
-        <div style="background: rgba(2, 6, 23, 0.4); border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 12px; padding: 14px; margin-bottom: 12px; display: flex;">
+        <div class="pending-card">
           {cover_html}
-          <div style="flex:1; min-width:0;">
-            <h3 style="margin: 0 0 4px; font-size: 16px;">{escape(title_en)} <span style="font-size:12px; color:#94a3b8; font-weight:normal;">({escape(raw_title)})</span></h3>
-            <p style="margin:0 0 6px; font-size:12px; color:#cbd5e1;">By <strong>{escape(author)}</strong> &middot; Uploaded by <strong>{escape(uploader_disp)}</strong> on {escape(item.get('upload_date', ''))}</p>
-            {f'<p style="margin:0 0 6px; font-size:11px; color:#a78bff;">Tags: {escape(tags_str)}</p>' if tags_str else ''}
-            <p style="margin:0 0 10px; font-size:12px; color:#94a3b8; max-height:80px; overflow-y:auto;">{escape(desc)}</p>
-            <div style="display:flex; gap:10px;">
+          <div class="pending-content">
+            <h3 class="pending-title">{escape(title_en)} <span class="pending-original">({escape(raw_title)})</span></h3>
+            <p class="pending-meta">By <strong>{escape(author)}</strong> &middot; Uploaded by <strong>{escape(uploader_disp)}</strong> on {escape(item.get('upload_date', ''))}</p>
+            {f'<p class="pending-tags">Tags: {escape(tags_str)}</p>' if tags_str else ''}
+            <p class="pending-description">{escape(desc)}</p>
+            <div class="pending-actions">
               <form method="post" action="/admin/access">
                 <input type="hidden" name="action" value="approve_upload">
                 <input type="hidden" name="upload_id" value="{escape(uid)}">
-                <button type="submit" style="background:#22c55e; width:auto; padding:6px 14px; margin:0; font-size:12px;">Approve &amp; Publish</button>
+                <button type="submit" class="approve-button">Approve &amp; Publish</button>
               </form>
               <form method="post" action="/admin/access">
                 <input type="hidden" name="action" value="reject_upload">
                 <input type="hidden" name="upload_id" value="{escape(uid)}">
-                <button type="submit" class="small-danger-button" style="margin:0;">Reject &amp; Delete</button>
+                <button type="submit" class="small-danger-button">Reject &amp; Delete</button>
               </form>
             </div>
           </div>
@@ -4605,6 +4630,7 @@ def admin_access():
         """)
     incidents_html = "\n".join(incident_cards) or '<p>No multi-account incidents recorded yet.</p>'
 
+    admin_stylesheet_url = static_asset_url("css/admin-access.css")
     html = f"""
 <!doctype html>
 <html lang="en">
@@ -4612,90 +4638,7 @@ def admin_access():
   <meta charset="utf-8">
   <title>Access &amp; Moderation - ArchiveDB</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    * {{ box-sizing: border-box; }}
-    body {{
-      margin: 0; min-height: 100vh;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background:
-        radial-gradient(circle at top left, rgba(34, 197, 94, 0.20), transparent 32%),
-        radial-gradient(circle at bottom right, rgba(59, 130, 246, 0.22), transparent 30%),
-        #0f172a;
-      color: #e5e7eb; padding: 24px;
-    }}
-    .wrap {{ width: 100%; max-width: 900px; margin: 0 auto; }}
-    .top-links {{ display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }}
-    .card {{
-      background: rgba(15, 23, 42, 0.92); border: 1px solid rgba(148, 163, 184, 0.25);
-      border-radius: 22px; padding: 24px; margin-bottom: 18px;
-      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
-    }}
-    h1 {{ margin: 0 0 8px; font-size: 30px; letter-spacing: -0.04em; }}
-    h2 {{ margin: 0 0 14px; font-size: 22px; }}
-    p {{ color: #94a3b8; line-height: 1.55; margin: 0 0 16px; }}
-    code {{ color: #bfdbfe; background: rgba(59, 130, 246, 0.12); padding: 2px 6px; border-radius: 6px; }}
-    textarea {{
-      width: 100%; min-height: 180px; resize: vertical; padding: 14px;
-      border-radius: 14px; border: 1px solid rgba(148, 163, 184, 0.32);
-      background: rgba(2, 6, 23, 0.72); color: #f8fafc; font-size: 15px;
-      line-height: 1.45; outline: none;
-    }}
-    textarea:focus {{ border-color: #22c55e; box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.13); }}
-    button {{
-      width: 100%; margin-top: 14px; padding: 13px 16px; border: 0;
-      border-radius: 14px; background: linear-gradient(135deg, #22c55e, #3b82f6);
-      color: white; font-size: 15px; font-weight: 800; cursor: pointer;
-    }}
-    button:hover {{ filter: brightness(1.08); }}
-    .message {{
-      margin-top: 16px; padding: 13px 14px; border-radius: 14px;
-      background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.30);
-      color: #bfdbfe; font-size: 14px;
-    }}
-    .added {{
-      margin-top: 16px; padding: 13px 14px; border-radius: 14px;
-      background: rgba(34, 197, 94, 0.12); border: 1px solid rgba(34, 197, 94, 0.30);
-      color: #bbf7d0; font-size: 14px;
-    }}
-    .current {{
-      max-height: 360px; overflow: auto; border-radius: 14px;
-      border: 1px solid rgba(148, 163, 184, 0.18); background: rgba(2, 6, 23, 0.38);
-      padding: 12px;
-    }}
-    ul {{ margin: 0; padding-left: 20px; }}
-    li {{ padding: 4px 0; word-break: break-word; }}
-    a {{ color: #93c5fd; text-decoration: none; font-weight: 800; }}
-    a:hover {{ text-decoration: underline; }}
-    .count {{ color: #94a3b8; font-weight: 500; }}
-    .grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }}
-    .danger-form {{ display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end; }}
-    label {{ color: #cbd5e1; font-weight: 700; font-size: 14px; }}
-    input {{
-      width: 100%; margin-top: 7px; padding: 12px; border-radius: 12px;
-      border: 1px solid rgba(148, 163, 184, 0.32); background: rgba(2, 6, 23, 0.72);
-      color: #f8fafc; font-size: 15px;
-    }}
-    .danger-button {{ background: #dc2626; width: auto; min-height: 44px; margin: 0; }}
-    .small-danger-button {{ background: #dc2626; width: auto; min-height: 36px; margin: 0; padding: 8px 12px; border-radius: 10px; font-size: 12px; }}
-    .table-wrap {{ overflow-x: auto; border: 1px solid rgba(148, 163, 184, .18); border-radius: 14px; }}
-    table {{ width: 100%; border-collapse: collapse; min-width: 980px; font-size: 13px; }}
-    .compact-table table {{ min-width: 720px; }}
-    th, td {{ padding: 12px; text-align: left; vertical-align: top; border-bottom: 1px solid rgba(148, 163, 184, .14); }}
-    th {{ color: #cbd5e1; background: rgba(30, 41, 59, .75); position: sticky; top: 0; }}
-    .muted {{ color: #94a3b8; font-size: 12px; margin:0; }}
-    .badge {{ display: inline-block; padding: 3px 8px; border-radius: 999px; background: rgba(59, 130, 246, .16); color: #bfdbfe; font-size: 12px; font-weight: 800; }}
-    .badge.danger {{ background: rgba(239, 68, 68, .16); color: #fecaca; }}
-    .incident {{ border: 1px solid rgba(148, 163, 184, .18); border-radius: 14px; padding: 16px; background: rgba(2, 6, 23, .38); }}
-    .incident h3 {{ margin: 10px 0; font-size: 16px; }}
-    .policy {{ border-left: 3px solid #3b82f6; padding: 10px 14px; background: rgba(59, 130, 246, .08); border-radius: 0 10px 10px 0; }}
-    .policy strong {{ color: #f8fafc; }}
-    @media (max-width: 720px) {{
-      body {{ padding: 16px; }}
-      .card {{ padding: 18px; border-radius: 16px; }}
-      .grid, .danger-form {{ grid-template-columns: 1fr; }}
-      .danger-button {{ width: 100%; }}
-    }}
-  </style>
+  <link rel="stylesheet" href="{admin_stylesheet_url}">
 </head>
 
 <body>
@@ -4703,7 +4646,7 @@ def admin_access():
     <div class="top-links">
       <a href="/">Back to gallery</a>
       <a href="/admin/downloads">Download report</a>
-      <form action="/logout" method="post" style="display:inline"><button type="submit">Logout</button></form>
+      <form action="/logout" method="post" class="inline-form"><button type="submit">Logout</button></form>
     </div>
 
     {message_html}
@@ -4750,7 +4693,7 @@ def admin_access():
         <label>Note<input type="text" name="note" maxlength="1000" placeholder="Home, office, etc."></label>
         <button type="submit">Add exemption</button>
       </form>
-      <div class="table-wrap compact-table" style="margin-top:16px">
+      <div class="table-wrap compact-table table-spaced">
         <table>
           <thead><tr><th>IP/network</th><th>Note</th><th>Added by</th><th>Added at (UTC)</th><th></th></tr></thead>
           <tbody>{exemption_rows_html}</tbody>

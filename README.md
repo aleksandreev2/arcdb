@@ -342,8 +342,10 @@ See `docs/SECURITY.md` for the compatibility and verification contract.
 
 Executable browser code is protected by a per-response nonce: CSP no longer allows
 `unsafe-inline` scripts or the previous CDN fallback and blocks script attributes.
-The shared auth CSS is a local fingerprinted immutable asset; the later static split
-will remove the remaining inline-style exception without changing the design.
+Auth, gallery, reader, community and admin CSS are local fingerprinted assets;
+immutable caching is enabled only for the matching file hash. The style policy is
+self-only and blocks style attributes. This is repository/local/CI state, not a
+claim that the production revision already serves these headers.
 
 ## Repository layout
 

@@ -237,11 +237,22 @@ claimed:
 
 ## Phase 9 — frontend/static split
 
-- move inline CSS/JS to static assets;
-- vendor runtime dependencies such as JSZip;
-- add cache headers/fingerprints;
-- reduce HTML size;
-- tighten CSP after inline code is removed.
+Status: the behavior-preserving CSS half is implemented in repository/local/CI;
+production enablement is not claimed.
+
+- large auth/gallery/reader/community/admin CSS moved to tracked static assets
+  (implemented);
+- content-hash URLs plus hash-validated immutable cache headers (implemented);
+- remove the style `unsafe-inline` exception and block style attributes
+  (implemented);
+- preserve responsive/focus/reduced-motion behavior and dynamic progress/settings
+  without HTML style sinks (implemented and browser-regression checked locally);
+- move reusable page JavaScript to static modules while retaining only the minimum
+  nonce-bearing Jinja bootstrap data (planned);
+- no JSZip vendoring is currently required because the unused CDN fallback was
+  removed; reconsider only if a real client packaging dependency returns;
+- add broader asset fingerprint automation and Cloudflare cache policy after the
+  production revision is reconciled (planned).
 
 ## Phase 10 — Cloudflare/R2 optimization
 
@@ -277,8 +288,7 @@ Some items can occur earlier when touching related code:
 - parser + explicit tag/attribute/URL allowlist for EPUB content (implemented);
 - systematic ownership review for upload/session endpoints (implemented);
 - nonce-only executable-script CSP and blocked script attributes (implemented);
-- remove the remaining `style-src 'unsafe-inline'` during the behavior-preserving
-  large-template static CSS split (Phase 8/late frontend work);
+- self-only style CSP and blocked style attributes (implemented in repository/local/CI);
 - origin network restrictions;
 - admin auditability;
 - secret rotation/documented secret ownership.
@@ -312,10 +322,10 @@ After process-local state is removed/split:
 9. R2/Cloudflare optimization
 ```
 
-Without live-production inputs, the repository-side security/observability and
-repeatable local baseline work is complete. The behavior-preserving static CSS
-split that removes the remaining style CSP exception is the next independent stage;
-state read-cutover, capacity tuning, library index, packager and Telegram production
+Without live-production inputs, the repository-side security/observability,
+repeatable local baseline and behavior-preserving static CSS/CSP work is complete.
+Reusable JavaScript extraction remains independent late frontend work; state
+read-cutover, capacity tuning, library index, packager and Telegram production
 enablement remain operator-gated rather than guessed.
 
 ## Explicit non-goals for now

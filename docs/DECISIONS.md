@@ -565,7 +565,8 @@ hostile stored values fail closed. No state migration is needed.
 
 ## ADR-030 — Use response nonces before the large static-template split
 
-Status: accepted and implemented for repository/local/CI runtime.
+Status: accepted and implemented for repository/local/CI runtime; the temporary
+style exception was subsequently removed by ADR-032.
 
 Decision:
 
@@ -617,3 +618,32 @@ prevents this developer tool from becoming an accidental production load generat
 or credential transport. Local/CI measurements establish repeatability and wiring;
 Gunicorn, traffic concurrency and Block Volume tuning still require reconciled live
 inputs.
+
+## ADR-032 — Externalize page CSS and validate immutable asset versions
+
+Status: accepted and implemented for repository/local/CI runtime.
+
+Decision:
+
+- move the existing gallery, reader, community and generated admin styles into
+  tracked local CSS files without a visual redesign or API change;
+- replace fixed inline presentation and dynamic visibility/width writes with named
+  classes, `hidden`, semantic `progress` elements and bounded Web Animations while
+  retaining reader preference custom properties;
+- content-version every runtime stylesheet at response rendering time with the first
+  16 hexadecimal SHA-256 characters of the bytes this process will actually serve,
+  avoiding platform line-ending assumptions, and grant immutable caching only when
+  that prefix matches the actual confined static file;
+- set `style-src 'self'` and `style-src-attr 'none'`, retaining the existing
+  per-response nonce contract for executable inline bootstrap code;
+- require structural, real HTTP and local browser regression checks for the large
+  page templates.
+
+Reasoning:
+
+The large style blocks were stable presentation assets that inflated every HTML
+response and forced a broad CSP exception. A mechanical extraction plus explicit
+state primitives preserves current behavior while closing that exception. Checking
+the requested version against the served bytes prevents an arbitrary hash-shaped
+query from making stale unversioned content immutable. Production enablement still
+depends on reconciled rollout and observed headers.
